@@ -15,7 +15,7 @@
 [![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
 
 [![tools](https://img.shields.io/badge/tools-5-ff9a4d?style=flat-square)](#五个工具)
-[![export](https://img.shields.io/badge/export-WebM%20%2B%20Opus-3fd7c0?style=flat-square)](#导出视频)
+[![export](https://img.shields.io/badge/export-MP4%20H.264%2BAAC-3fd7c0?style=flat-square)](#导出视频)
 [![score](https://img.shields.io/badge/score-8%20presets-ffc04d?style=flat-square)](#配乐按风格挑按切点卡拍)
 [![deps](https://img.shields.io/badge/deps-0-2f9e6e?style=flat-square)](#亮点)
 [![PRs](https://img.shields.io/badge/PRs-welcome-e0457b?style=flat-square)](#参与)
@@ -183,7 +183,7 @@ sequenceDiagram
 <td width="50%" valign="top">
 
 <h3>📦 零外部依赖</h3>
-<p>不需要 ffmpeg、不需要 playwright、不需要联网、不需要音频素材。录制走浏览器原生 <code>MediaRecorder</code>，配乐用 Web Audio 现场合成。</p>
+<p>不需要 ffmpeg、不需要 playwright、不需要联网、不需要音频素材。录制走浏览器原生 <code>MediaRecorder</code>，配乐用 Web Audio 现场合成，直接出 MP4。</p>
 
 </td>
 <td width="50%" valign="top">
@@ -417,28 +417,41 @@ node docs/shoot-cover.cjs      # 产出 1280×640 @2x 的 docs/cover.png
 
 ## 导出视频
 
-卡片上的「导出视频」按钮：
+卡片上选好格式和配乐，点「导出视频」：
 
 1. 读取 iframe 里的 `<canvas>`
 2. 按分镜切点渲染配乐，混成一条音轨
 3. `captureStream(0)` + 逐帧 `renderAt(i / fps)` + `requestFrame()`
-4. `MediaRecorder` 把画面和声音编成 **WebM**（VP9 + Opus）下载
+4. `MediaRecorder` 编码下载
 
-要 MP4 就自己转一下：
+<div align="center">
+
+| 格式 | 编码 | 说明 |
+|---|---|---|
+| **MP4**（默认） | H.264 + AAC | 直接发微信、拖进剪映 / Premiere / Final Cut |
+| **WebM** | VP9 + Opus | 浏览器不支持 MP4 时的回退 |
+
+</div>
+
+格式下拉只列出**你这台浏览器真正支持**的容器。Chromium 内核（Chrome / Edge 111+）能直接录 MP4，
+实测产出的是标准 MP4（`ftyp isom` + `avc1`），不是改后缀。
+
+> 导出后会告诉你这一条到底有没有声音：`含配乐` / `无声` / `⚠ 配乐未进入录制`。
+> 最后一种表示浏览器没能启动音频（比如没有音频设备、或页面被静音），
+> **不会把无声文件当成配乐成片交给你**。
+
+要重新编码或压缩：
 
 ```bash
-ffmpeg -i code-animation-B3.webm -c:v libx264 -c:a aac -pix_fmt yuv420p out.mp4
+ffmpeg -i in.mp4 -c:v libx264 -crf 20 -c:a aac -b:a 192k out.mp4
 ```
-
-> 浏览器只在 `MediaRecorder` 支持 Opus 时才带上音轨；不支持时会退化成无声，
-> 卡片上会写明导出结果。Chrome / Edge 都支持。
 
 ---
 
 ## 已知限制
 
-- 导出是 **WebM**（VP9 + Opus），不是 MP4
-- 逐帧录制是**实时**的：8 秒 30fps 大约要 8 秒，期间别切走标签页（浏览器会节流后台标签）
+- 导出走浏览器 `MediaRecorder`，是**实时**录制：8 秒 30fps 大约要 8 秒，期间别切走标签页（浏览器会节流后台标签）
+- **MP4 需要 Chromium 111+**（Chrome / Edge）。Firefox 会落到 WebM；格式下拉会如实反映
 - 配乐是程序化合成的，**不是真实乐器录音**；它胜在免费、可复现、能卡点，不比商业音源
 - 自定义音频只在浏览器里混入，**不会上传**，也不会写回工作区
 - 341 条里 **148 条没有参考静帧**，卡片会如实标注「无静帧」

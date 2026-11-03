@@ -578,6 +578,32 @@ async function audioFileToBuffer(file, duration, sampleRate) {
 
 
 
+    /**
+     * Container preference, best first.
+     *
+     * Chromium records genuine H.264/AAC MP4 through MediaRecorder, so MP4 is the
+     * default; the WebM entries are the fallback for browsers without it.
+     */
+    const CONTAINERS = [
+      { id: 'mp4', label: 'MP4', ext: 'mp4', mimes: ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.4D401F,mp4a.40.2', 'video/mp4'] },
+      { id: 'webm', label: 'WebM', ext: 'webm', mimes: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'] },
+    ];
+
+    /** Which container this browser can actually record, MP4 first. */
+    function pickContainer(preferred) {
+      const order = preferred === 'webm' ? ['webm', 'mp4'] : ['mp4', 'webm'];
+      for (const id of order) {
+        const container = CONTAINERS.find((c) => c.id === id);
+        const mime = container.mimes.find((m) => (
+          typeof MediaRecorder !== 'undefined'
+          && MediaRecorder.isTypeSupported
+          && MediaRecorder.isTypeSupported(m)
+        ));
+        if (mime) return { ...container, mime };
+      }
+      return null;
+    }
+
     function download(blob, name) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -602,9 +628,9 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const canvas = doc.querySelector('canvas');
       if (!canvas) throw new Error('画面里没有 <canvas>，无法逐帧录制');
       if (typeof canvas.captureStream !== 'function') throw new Error('当前浏览器不支持 canvas.captureStream');
-      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8,opus', 'video/webm']
-        .find((m) => window.MediaRecorder && window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(m));
-      if (!mime) throw new Error('当前浏览器不支持 MediaRecorder 录制');
+      const container = pickContainer(opts.container);
+      if (!container) throw new Error('当前浏览器不支持 MediaRecorder 录制');
+      const mime = container.mime;
 
       const stream = canvas.captureStream(0);
       const videoTrack = stream.getVideoTracks()[0];
@@ -615,6 +641,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       let audioCtx;
       let source;
       let audioBuffer;
+      let analyser;
       const wantsMusic = opts.music && opts.music !== 'none';
       if (wantsMusic || opts.musicBuffer) {
         if (opts.musicBuffer) {
@@ -632,6 +659,10 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(destination);
+        // Tap the same signal so the export can prove audio actually flowed.
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
         tracks.push(...destination.stream.getAudioTracks());
       }
 
@@ -649,7 +680,15 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const t0 = performance.now();
 
       if (source) {
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        // A suspended context yields no audio, and without an output device resume()
+        // can hang forever — wait briefly, then record anyway rather than stall.
+        if (audioCtx.state === 'suspended') {
+          await Promise.race([
+            audioCtx.resume().catch(() => {}),
+            new Promise((r) => setTimeout(r, 400)),
+          ]);
+        }
+        if (audioCtx.state !== 'running' && opts.onStage) opts.onStage('音频未启动，本段可能是无声的');
         source.start(0);
       }
 
@@ -658,6 +697,16 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           if (opts.signal && opts.signal.aborted) break;
           if (hasRenderAt) await win.renderAt(i / fps);
           videoTrack.requestFrame();
+          // Sample the score periodically; a peak of zero means the browser never
+          // started audio, which would otherwise export as silent video.
+          if (analyser && i % 5 === 0) {
+            const probe = new Float32Array(analyser.fftSize);
+            analyser.getFloatTimeDomainData(probe);
+            for (let k = 0; k < probe.length; k++) {
+              const v = Math.abs(probe[k]);
+              if (v > audioPeak) audioPeak = v;
+            }
+          }
           if (opts.onProgress) opts.onProgress((i + 1) / total);
           const target = ((i + 1) * 1000) / fps;
           const wait = target - (performance.now() - t0);
@@ -670,7 +719,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const blob = await finished;
       try { if (source) source.stop(); } catch { /* already ended */ }
       if (audioCtx) void audioCtx.close();
-      return blob;
+      return { blob, container, hasAudio: tracks.length > 1, audioPeak };
     }
 
     /** Reference stills the Agent showed for the user to pick a style from. */
@@ -758,13 +807,25 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const [progress, setProgress] = useState(0);
       const [note, setNote] = useState('');
       const [aspect, setAspect] = useState('16:9');
+      let audioPeak = 0;
       const [music, setMusic] = useState(anim.music || 'none');
       const [custom, setCustom] = useState(null);
       const [customName, setCustomName] = useState('');
       const [stage, setStage] = useState('');
+      const [format, setFormat] = useState(null);
       const previewRef = useRef(null);
       const fileRef = useRef(null);
       const frameRef = useRef(null);
+
+      // Only offer containers this browser can actually record.
+      const available = useMemo(
+        () => CONTAINERS.filter((c) => c.mimes.some((m) => (
+          typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)
+        ))),
+        [],
+      );
+      const defaultFormat = available.some((c) => c.id === 'mp4') ? 'mp4' : (available[0] && available[0].id) || 'webm';
+      const activeFormat = format || defaultFormat;
 
       const duration = Number(anim.duration) || 8;
       const fps = Number(anim.fps) || 30;
@@ -811,25 +872,34 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         setNote('');
         setStage('');
         try {
-          const blob = await recordAnimation(frameRef.current, {
+          const { blob, container, hasAudio, audioPeak } = await recordAnimation(frameRef.current, {
             duration,
             fps,
             cuts,
+            container: activeFormat,
             music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
             onStage: setStage,
             onProgress: setProgress,
           });
           if (!blob || !blob.size) throw new Error('录制结果为空');
-          download(blob, `${anim.title || anim.id || 'animation'}.webm`);
-          setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB${custom || music !== 'none' ? '（含配乐）' : ''}`);
+          download(blob, `${anim.title || anim.id || 'animation'}.${container.ext}`);
+          const wanted = custom || music !== 'none';
+          // A zero peak means the browser never started audio: say so instead of
+          // handing over a silent file as if it were scored.
+          const audioNote = !wanted
+            ? ' · 无声'
+            : (hasAudio && audioPeak > 1e-4)
+              ? ' · 含配乐'
+              : ' · ⚠ 配乐未进入录制（浏览器音频未启动），这段是无声的';
+          setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB · ${container.label}${audioNote}`);
         } catch (error) {
           setNote(`导出失败：${error.message}`);
         } finally {
           setBusy('');
           setStage('');
         }
-      }, [busy, duration, fps, music, custom, cuts, anim]);
+      }, [busy, duration, fps, music, custom, cuts, anim, format]);
 
       const scoreOptions = MUSIC_PRESETS;
 
@@ -908,6 +978,20 @@ async function audioFileToBuffer(file, duration, sampleRate) {
             ref: fileRef, type: 'file', accept: 'audio/*',
             style: { display: 'none' }, onChange: onPickFile,
           }),
+        ),
+        h('div', { className: 'cas-score' },
+          h('span', { className: 'cas-score-label' }, '格式'),
+          available.length > 1
+            ? h('select', {
+                className: 'cas-select',
+                value: activeFormat,
+                onChange: (e) => setFormat(e.target.value),
+              }, available.map((c) => h('option', { key: c.id, value: c.id }, c.label)))
+            : h('span', { className: 'cas-score-hint' }, available[0] ? available[0].label : '无可用容器'),
+          h('span', { className: 'cas-score-hint' },
+            available.some((c) => c.id === 'mp4')
+              ? 'MP4 为 H.264 + AAC，可直接发微信、剪映、Premiere'
+              : '当前浏览器不支持 MP4 录制，导出后可用 ffmpeg 转码'),
         ),
         (anim.warnings && anim.warnings.length)
           ? h('div', { className: 'cas-warn' }, `建议检查：${anim.warnings.join('；')}`)
