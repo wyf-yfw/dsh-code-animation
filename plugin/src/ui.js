@@ -80,6 +80,8 @@ window.__ModuleLoader__.load({
   padding:0 6px;outline:none;max-width:190px}
 .cas-select:focus{border-color:var(--dsw-alias-border-l2)}
 .cas-score-hint{font-size:11px;color:var(--dsw-alias-state-idle-primary);white-space:nowrap}
+.cas-score-prompt{font-size:11.5px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:340px;font-weight:500}
 .cas-path{padding:7px 11px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dsw-alias-state-idle-primary);
   word-break:break-all;background:var(--dsw-alias-bg-layer-2)}
@@ -211,12 +213,16 @@ window.__ModuleLoader__.load({
       if (wantsMusic || opts.musicBuffer) {
         if (opts.musicBuffer) {
           audioBuffer = opts.musicBuffer;
+        } else if (opts.scoreBuffer) {
+          // Reuse the buffer already rendered for auditioning: same audio as the preview.
+          audioBuffer = opts.scoreBuffer;
         } else {
           if (opts.onStage) opts.onStage('正在合成配乐…');
           audioBuffer = await renderMusic(opts.music, {
             duration: opts.duration,
             seed: opts.musicSeed,
             cuts: opts.cuts,
+            cues: opts.cues,
           });
         }
         audioCtx = new AudioContext();
@@ -392,6 +398,9 @@ window.__ModuleLoader__.load({
       const [stage, setStage] = useState('');
       const [format, setFormat] = useState(null);
       const previewRef = useRef(null);
+      const audioCtxRef = useRef(null);
+      const audioSourceRef = useRef(null);
+      const scoreRef = useRef(null);
       const fileRef = useRef(null);
       const frameRef = useRef(null);
 
@@ -412,6 +421,8 @@ window.__ModuleLoader__.load({
         () => (Array.isArray(anim.cuts) ? anim.cuts.map(Number).filter((t) => Number.isFinite(t) && t > 0) : []),
         [anim.cuts],
       );
+      // In-shot visual peaks the score must hit as well as the cuts.
+      const cues = useMemo(() => (Array.isArray(anim.cues) ? anim.cues : []), [anim.cues]);
 
       useEffect(() => () => { if (previewRef.current) previewRef.current.stop(); }, []);
 
@@ -434,50 +445,91 @@ window.__ModuleLoader__.load({
         }
       }, []);
 
+      /** Stop the auditioning source without touching the video clock. */
+      const stopAudio = useCallback(() => {
+        if (audioSourceRef.current) {
+          try { audioSourceRef.current.stop(); } catch { /* already ended */ }
+          audioSourceRef.current = null;
+        }
+        if (audioCtxRef.current) {
+          void audioCtxRef.current.close().catch(() => {});
+          audioCtxRef.current = null;
+        }
+      }, []);
+
       const stopPlayback = useCallback(() => {
         if (animFrameRef.current) {
           cancelAnimationFrame(animFrameRef.current);
           animFrameRef.current = null;
         }
+        stopAudio();
         setPlaying(false);
-      }, []);
+      }, [stopAudio]);
+
+      /**
+       * Start the score at an offset so picture and sound share one clock.
+       * The buffer is rendered ahead of time, so pressing play is instant.
+       */
+      const startAudioAt = useCallback(async (offset) => {
+        const buffer = custom || (music && music !== 'none' ? scoreRef.current : null);
+        if (!buffer) return;
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        if (ctx.state === 'suspended') {
+          await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 400))]);
+        }
+        if (audioCtxRef.current !== ctx) { void ctx.close(); return; }
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0, Math.max(0, Math.min(offset, buffer.duration - 0.01)));
+        audioSourceRef.current = source;
+      }, [music, custom]);
 
       const togglePlay = useCallback(() => {
         if (playing) {
           stopPlayback();
-        } else {
-          let startT = Number(scrubRef.current);
-          if (startT >= duration - 0.05) {
-            startT = 0;
-            applyScrub(0);
-          }
-          setPlaying(true);
-          const startWallTime = performance.now() - startT * 1000;
-          const step = (now) => {
-            const curT = (now - startWallTime) / 1000;
-            if (curT >= duration) {
-              applyScrub(duration);
-              setPlaying(false);
-              animFrameRef.current = null;
-            } else {
-              applyScrub(curT);
-              animFrameRef.current = requestAnimationFrame(step);
-            }
-          };
-          animFrameRef.current = requestAnimationFrame(step);
+          return;
         }
-      }, [playing, duration, applyScrub, stopPlayback]);
+        let startT = Number(scrubRef.current);
+        if (startT >= duration - 0.05) {
+          startT = 0;
+          applyScrub(0);
+        }
+        setPlaying(true);
+        void startAudioAt(startT);
+        const startWallTime = performance.now() - startT * 1000;
+        const step = (now) => {
+          const curT = (now - startWallTime) / 1000;
+          if (curT >= duration) {
+            applyScrub(duration);
+            stopAudio();
+            setPlaying(false);
+            animFrameRef.current = null;
+          } else {
+            applyScrub(curT);
+            animFrameRef.current = requestAnimationFrame(step);
+          }
+        };
+        animFrameRef.current = requestAnimationFrame(step);
+      }, [playing, duration, applyScrub, stopPlayback, startAudioAt, stopAudio]);
 
       useEffect(() => () => {
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      }, []);
+        stopAudio();
+      }, [stopAudio]);
 
-      const onPreview = useCallback(() => {
-        if (previewRef.current) { previewRef.current.stop(); previewRef.current = null; return; }
-        const selected = custom ? 'ambient' : music;
-        if (!selected || selected === 'none') return;
-        previewRef.current = previewMusic(selected, duration);
-      }, [music, custom, duration]);
+      // Render the score once so auditioning is instant and export reuses the buffer.
+      useEffect(() => {
+        if (custom) { scoreRef.current = custom; return undefined; }
+        if (!music || music === 'none') { scoreRef.current = null; return undefined; }
+        let cancelled = false;
+        scoreRef.current = null;
+        renderMusic(music, { duration, cuts, cues }).then((buffer) => {
+          if (!cancelled) scoreRef.current = buffer;
+        }).catch(() => {});
+        return () => { cancelled = true; };
+      }, [music, custom, duration, cuts, cues]);
 
       const onPickFile = useCallback(async (event) => {
         const file = event.target.files && event.target.files[0];
@@ -527,6 +579,7 @@ window.__ModuleLoader__.load({
             container: activeFormat,
             music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
+            scoreBuffer: scoreRef.current || undefined,
             onStage: setStage,
             onProgress: setProgress,
           });
@@ -542,7 +595,12 @@ window.__ModuleLoader__.load({
               : '⚠ 配乐未进入录制，这段是无声的';
 
           const fileName = `${anim.title || anim.id || 'animation'}.${container.ext}`;
-          setStage('正在写入工作区…');
+
+          // One click does both: download to the browser, and also write into the
+          // chosen directory, so the file is never hidden in only one place.
+          download(blob, fileName);
+
+          setStage('正在写入目录…');
           try {
             const query = new URLSearchParams({ name: fileName });
             const exportDir = customDir || cwd;
@@ -555,11 +613,10 @@ window.__ModuleLoader__.load({
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
             setSavedPath(data.path);
-            setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB · ${container.label} · ${audioNote}`);
+            setNote(`已下载并保存到 ${data.path}（${(blob.size / 1048576).toFixed(1)} MB · ${container.label} · ${audioNote}）`);
           } catch (error) {
-            // A Host that cannot be reached must not lose the render.
-            download(blob, fileName);
-            setNote(`已通过浏览器下载 ${fileName} · ${container.label} · ${audioNote}（写入工作区失败：${error.message}）`);
+            // The download already happened, so the render is never lost.
+            setNote(`已下载 ${fileName} · ${container.label} · ${audioNote}（未写入目录：${error.message}）`);
           }
         } catch (error) {
           setNote(`导出失败：${error.message}`);
@@ -567,9 +624,7 @@ window.__ModuleLoader__.load({
           setBusy('');
           setStage('');
         }
-      }, [busy, duration, fps, music, custom, cuts, anim, activeFormat, customDir, cwd]);
-
-      const scoreOptions = MUSIC_PRESETS;
+      }, [busy, duration, fps, music, custom, cuts, cues, anim, activeFormat, customDir, cwd]);
 
       return h('div', { className: 'cas-card' },
         h('div', { className: 'cas-card-head' },
@@ -638,28 +693,28 @@ window.__ModuleLoader__.load({
         ),
         h('div', { className: 'cas-score' },
           h('span', { className: 'cas-score-label' }, '配乐'),
-          h('select', {
-            className: 'cas-select',
-            value: custom ? 'custom' : music,
-            onChange: (e) => {
-              if (e.target.value === 'custom') { if (fileRef.current) fileRef.current.click(); return; }
-              setCustom(null);
-              setCustomName('');
-              setMusic(e.target.value);
-            },
-          },
-            scoreOptions.map((p) => h('option', { key: p.id, value: p.id }, p.label)),
-            h('option', { value: 'custom' }, customName ? `自定义：${customName}` : '自定义音频…'),
-          ),
-          cuts.length
-            ? h('span', { className: 'cas-score-hint' }, `已按 ${cuts.length} 个切点卡拍`)
-            : h('span', { className: 'cas-score-hint' }, '先在分镜里定切点，配乐会自动卡拍'),
+          custom || (music && music !== 'none')
+            ? h('span', { className: 'cas-score-prompt', title: customName || music },
+                customName ? `自定义：${customName}` : music)
+            : h('span', { className: 'cas-score-hint' }, '无配乐'),
+          h('span', { className: 'cas-score-hint' },
+            custom ? '已载入自定义音频'
+              : `${cuts.length} 个切点${cues.length ? ` + ${cues.length} 个画面重点` : ''} 已卡点`),
           h('span', { className: 'cas-grow' }),
           h('button', {
             className: 'cas-btn',
-            onClick: onPreview,
-            disabled: !!busy || (!custom && music === 'none'),
-          }, previewRef.current ? '停止试听' : '试听'),
+            onClick: () => {
+              stopPlayback();
+              if (custom || music === 'none') { setCustom(null); setCustomName(''); setMusic(anim.music || ''); return; }
+              setMusic('none');
+            },
+            disabled: !!busy,
+          }, custom || music === 'none' ? '恢复配乐' : '静音'),
+          h('button', {
+            className: 'cas-btn',
+            onClick: () => { if (fileRef.current) fileRef.current.click(); },
+            disabled: !!busy,
+          }, '换音频…'),
           h('input', {
             ref: fileRef, type: 'file', accept: 'audio/*',
             style: { display: 'none' }, onChange: onPickFile,

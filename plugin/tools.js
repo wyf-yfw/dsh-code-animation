@@ -137,11 +137,12 @@ function inspectShots(shots, duration) {
  * @returns a preset id from MUSIC_PRESETS.
  */
 function resolveMusic(requested, style) {
-  const wanted = String(requested || '').trim().toLowerCase();
-  if (wanted === 'none' || wanted === 'off' || wanted === '无' || wanted === '无配乐') return 'none';
-  if (MUSIC_PRESETS.includes(wanted)) return wanted;
+  const wanted = String(requested || '').trim();
+  if (['none', 'off', '无', '无配乐', 'mute', '静音'].includes(wanted.toLowerCase())) return 'none';
+  // Allow completely unrestricted, tailored music prompt descriptions
+  if (wanted) return wanted;
   if (style) return defaultMusicFor(style);
-  return 'pulse';
+  return '贴合画面风格与分镜剧情的专属卡点配乐';
 }
 
 /**
@@ -355,12 +356,11 @@ export function registerCreationTools(deps) {
         aspect: { type: 'string', description: '画幅。', enum: ['16:9', '9:16', '1:1'] },
         music: {
           type: 'string',
-          description: `配乐风格，会随片长与切点自动卡拍。可选：${MUSIC_PRESETS.join(' / ')}。留空则按风格自动挑。`,
-          enum: MUSIC_PRESETS,
+          description: '配乐风格与氛围定制提示词，根据画面风格与剧情转折自由生成（如：国风空灵古筝起步，2.5秒大堂鼓卡点爆发，4秒转入琵琶扫弦高潮）。没有预设限制，留空则自动按风格匹配。',
         },
         shots: {
           type: 'array',
-          description: '镜头列表，按时间顺序。',
+          description: '镜头列表，按时间顺序。每个镜头的起始点会自动作为音乐切点卡点。',
           items: {
             type: 'object',
             properties: {
@@ -369,6 +369,20 @@ export function registerCreationTools(deps) {
               scene: { type: 'string', description: '画面内容：谁、在哪、在做什么。' },
               text: { type: 'string', description: '画面上出现的文字原文，没有就留空。' },
               camera: { type: 'string', description: '运镜与转场，如「慢推」「硬切」「横向滑入」。' },
+              cues: {
+                type: 'array',
+                description: '该镜头内部的重点视觉动作与卡点时间（如文字砸落、数字翻转、粒子爆发瞬间）。',
+                items: {
+                  type: 'object',
+                  properties: {
+                    time: { type: 'number', description: '卡点精确秒数' },
+                    type: { type: 'string', description: '声音类型：impact(重击)/drop(跌落低音)/hit(打击)/rise(聚气扫频)/whoosh(呼啸)' },
+                    label: { type: 'string', description: '动作描述，如「数字冲顶」' },
+                  },
+                  required: ['time'],
+                  additionalProperties: false,
+                },
+              },
             },
             required: ['start', 'end', 'scene'],
             additionalProperties: false,
@@ -437,6 +451,11 @@ export function registerCreationTools(deps) {
           scene: String(s.scene || ''),
           text: String(s.text || ''),
           camera: String(s.camera || ''),
+          cues: Array.isArray(s.cues) ? s.cues.map((c) => ({
+            time: round(Number(c.time) || 0),
+            type: String(c.type || 'hit'),
+            label: String(c.label || ''),
+          })) : [],
         })),
         warnings,
       };
@@ -463,8 +482,21 @@ export function registerCreationTools(deps) {
         storyboard_id: { type: 'string', description: '已拍板的分镜 id（save_storyboard 的返回值）。' },
         music: {
           type: 'string',
-          description: `配乐风格。留空则沿用分镜的配乐，再留空则按风格自动挑。可选：${MUSIC_PRESETS.join(' / ')}。`,
-          enum: MUSIC_PRESETS,
+          description: '配乐风格定制提示词（如：国风水墨意境、赛博重低音电子、史诗管弦、轻快动感等），留空则自动从分镜或风格继承，无任何固定预设限制。',
+        },
+        cues: {
+          type: 'array',
+          description: '全片精确卡点列表（秒数与事件类型），除镜头切点外，镜头内部的关键视觉重点（文字砸下、数据爆发、粒子聚散）在此标注，配乐会在该时间触发重音。',
+          items: {
+            type: 'object',
+            properties: {
+              time: { type: 'number', description: '精确时间点（秒）' },
+              type: { type: 'string', description: '声音类型：impact/drop/hit/rise/whoosh' },
+              label: { type: 'string', description: '事件名称' },
+            },
+            required: ['time'],
+            additionalProperties: false,
+          },
         },
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
@@ -484,6 +516,7 @@ export function registerCreationTools(deps) {
           storyboardId: { type: 'string' },
           music: { type: 'string' },
           cuts: { type: 'array', items: { type: 'number' }, description: '切点秒数，配乐按这些点卡拍。' },
+          cues: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '精确卡点列表' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
           url: { type: 'string' },
@@ -500,8 +533,9 @@ export function registerCreationTools(deps) {
           `片长 ${value.duration}s · ${value.fps}fps · ${(value.bytes / 1024).toFixed(0)} KB`,
           value.warnings.length ? `注意：${value.warnings.join('；')}` : '',
           `地址：${value.url}`,
-          `配乐：${value.music}${value.cuts.length ? `（按 ${value.cuts.length} 个切点卡拍）` : ''}`,
-          '对话末尾已显示预览卡片：可拖动查看、换配乐、试听，也可以直接导出视频。',
+          `配乐：${value.music}`,
+          `卡点对齐：${value.cuts.length} 个分镜切点${value.cues && value.cues.length ? ` + ${value.cues.length} 个镜头重点` : ''}已毫秒级精准对齐`,
+          '对话末尾已显示预览卡片：点击播放音画同步出声，点击导出直接一键下载成片。',
         ].filter(Boolean).join('\n'),
       }],
       presentationMeta: (_args, value) => value,
@@ -540,6 +574,29 @@ export function registerCreationTools(deps) {
           .sort((a, b) => a - b)
         : [];
 
+      // Collect all internal visual hit cues from storyboard shots and args
+      const cues = [];
+      if (Array.isArray(board?.shots)) {
+        for (const s of board.shots) {
+          if (Array.isArray(s.cues)) {
+            for (const c of s.cues) {
+              const t = round(Number(c.time) || 0);
+              if (t > 0.05 && t < (Number(args?.duration) || board.duration || 8)) {
+                cues.push({ time: t, type: c.type || 'hit', label: c.label || '' });
+              }
+            }
+          }
+        }
+      }
+      if (Array.isArray(args?.cues)) {
+        for (const c of args.cues) {
+          const t = round(Number(c.time) || 0);
+          if (t > 0.05 && t < (Number(args?.duration) || board.duration || 8)) {
+            cues.push({ time: t, type: c.type || 'hit', label: c.label || '' });
+          }
+        }
+      }
+
       const duration = Math.max(1, Math.min(Number(args?.duration) || board?.duration || 8, 120));
       const fps = Math.max(1, Math.min(Number(args?.fps) || board?.fps || 30, 60));
       const id = `anim-${slug(args?.title)}-${Date.now().toString(36)}`;
@@ -554,6 +611,7 @@ export function registerCreationTools(deps) {
         styleName: style ? style.name : '',
         music,
         cuts,
+        cues,
         duration,
         fps,
         url: `/code-animation-api/animation/${id}`,
