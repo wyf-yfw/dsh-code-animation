@@ -67,6 +67,14 @@ window.__ModuleLoader__.load({
 .cas-warn{padding:7px 11px;font-size:11.5px;color:var(--dsw-alias-state-warn-primary);
   border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2)}
 .cas-note{padding:8px 11px;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.cas-score{display:flex;align-items:center;gap:9px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1);
+  flex-wrap:wrap}
+.cas-score-label{font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.cas-select{height:27px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:11.5px;
+  padding:0 6px;outline:none;max-width:190px}
+.cas-select:focus{border-color:var(--dsw-alias-border-l2)}
+.cas-score-hint{font-size:11px;color:var(--dsw-alias-state-idle-primary);white-space:nowrap}
 .cas-lightbox{position:fixed;inset:0;z-index:9100;background:rgba(4,5,8,.88);display:flex;align-items:center;
   justify-content:center;padding:32px;cursor:zoom-out}
 .cas-lightbox img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -85,6 +93,8 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /* __MUSIC_ENGINE__ */
+
     function download(blob, name) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -96,7 +106,12 @@ window.__ModuleLoader__.load({
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     }
 
-    /** Drive a detached document frame by frame and record it through MediaRecorder. */
+    /**
+     * Drive a detached document frame frame by frame and record it through MediaRecorder.
+     * @param opts.music - a preset id, or an AudioBuffer for a user-supplied track.
+     *   Any audio is mixed at render time, so video and score start together.
+     * @param opts.cuts - cut times in seconds; the score is fitted and accented to them.
+     */
     async function recordAnimation(iframe, opts) {
       const win = iframe && iframe.contentWindow;
       const doc = iframe && iframe.contentDocument;
@@ -104,13 +119,40 @@ window.__ModuleLoader__.load({
       const canvas = doc.querySelector('canvas');
       if (!canvas) throw new Error('画面里没有 <canvas>，无法逐帧录制');
       if (typeof canvas.captureStream !== 'function') throw new Error('当前浏览器不支持 canvas.captureStream');
-      const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8,opus', 'video/webm']
         .find((m) => window.MediaRecorder && window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(m));
       if (!mime) throw new Error('当前浏览器不支持 MediaRecorder 录制');
 
       const stream = canvas.captureStream(0);
-      const track = stream.getVideoTracks()[0];
-      const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 16000000 });
+      const videoTrack = stream.getVideoTracks()[0];
+      const tracks = [videoTrack];
+
+      // Audio, when requested, is mixed into the same recording session so the two
+      // tracks share one clock.
+      let audioCtx;
+      let source;
+      let audioBuffer;
+      const wantsMusic = opts.music && opts.music !== 'none';
+      if (wantsMusic || opts.musicBuffer) {
+        if (opts.musicBuffer) {
+          audioBuffer = opts.musicBuffer;
+        } else {
+          if (opts.onStage) opts.onStage('正在合成配乐…');
+          audioBuffer = await renderMusic(opts.music, {
+            duration: opts.duration,
+            seed: opts.musicSeed,
+            cuts: opts.cuts,
+          });
+        }
+        audioCtx = new AudioContext();
+        const destination = audioCtx.createMediaStreamDestination();
+        source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(destination);
+        tracks.push(...destination.stream.getAudioTracks());
+      }
+
+      const recorder = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: 16000000 });
       const parts = [];
       recorder.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
       const finished = new Promise((resolve) => {
@@ -122,17 +164,30 @@ window.__ModuleLoader__.load({
       const total = Math.max(1, Math.round(opts.duration * fps));
       const hasRenderAt = typeof win.renderAt === 'function';
       const t0 = performance.now();
-      for (let i = 0; i < total; i++) {
-        if (opts.signal && opts.signal.aborted) break;
-        if (hasRenderAt) await win.renderAt(i / fps);
-        track.requestFrame();
-        if (opts.onProgress) opts.onProgress((i + 1) / total);
-        const target = ((i + 1) * 1000) / fps;
-        const wait = target - (performance.now() - t0);
-        if (wait > 1) await new Promise((r) => setTimeout(r, wait));
+
+      if (source) {
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        source.start(0);
       }
-      recorder.stop();
-      return finished;
+
+      try {
+        for (let i = 0; i < total; i++) {
+          if (opts.signal && opts.signal.aborted) break;
+          if (hasRenderAt) await win.renderAt(i / fps);
+          videoTrack.requestFrame();
+          if (opts.onProgress) opts.onProgress((i + 1) / total);
+          const target = ((i + 1) * 1000) / fps;
+          const wait = target - (performance.now() - t0);
+          if (wait > 1) await new Promise((r) => setTimeout(r, wait));
+        }
+      } finally {
+        recorder.stop();
+      }
+
+      const blob = await finished;
+      try { if (source) source.stop(); } catch { /* already ended */ }
+      if (audioCtx) void audioCtx.close();
+      return blob;
     }
 
     /** Reference stills the Agent showed for the user to pick a style from. */
@@ -213,17 +268,30 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** The finished animation: scrub any moment, then export it as video. */
+    /** The finished animation: pick a score, scrub any moment, then export. */
     function AnimationCard({ anim }) {
       const [scrub, setScrub] = useState(0);
       const [busy, setBusy] = useState('');
       const [progress, setProgress] = useState(0);
       const [note, setNote] = useState('');
       const [aspect, setAspect] = useState('16:9');
+      const [music, setMusic] = useState(anim.music || 'none');
+      const [custom, setCustom] = useState(null);
+      const [customName, setCustomName] = useState('');
+      const [stage, setStage] = useState('');
+      const previewRef = useRef(null);
+      const fileRef = useRef(null);
       const frameRef = useRef(null);
 
       const duration = Number(anim.duration) || 8;
       const fps = Number(anim.fps) || 30;
+      // Cut points come from the storyboard, so the score lands on the edits.
+      const cuts = useMemo(
+        () => (Array.isArray(anim.cuts) ? anim.cuts.map(Number).filter((t) => Number.isFinite(t) && t > 0) : []),
+        [anim.cuts],
+      );
+
+      useEffect(() => () => { if (previewRef.current) previewRef.current.stop(); }, []);
 
       const applyScrub = useCallback((value) => {
         setScrub(value);
@@ -233,22 +301,54 @@ window.__ModuleLoader__.load({
         }
       }, []);
 
+      const onPreview = useCallback(() => {
+        if (previewRef.current) { previewRef.current.stop(); previewRef.current = null; return; }
+        const selected = custom ? 'ambient' : music;
+        if (!selected || selected === 'none') return;
+        previewRef.current = previewMusic(selected, duration);
+      }, [music, custom, duration]);
+
+      const onPickFile = useCallback(async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        try {
+          const buffer = await audioFileToBuffer(file, duration);
+          setCustom(buffer);
+          setCustomName(file.name);
+          setNote(`已载入 ${file.name}，导出时会混入`);
+        } catch (error) {
+          setNote(`音频读取失败：${error.message}`);
+        }
+      }, [duration]);
+
       const onExport = useCallback(async () => {
         if (busy) return;
         setBusy('export');
         setProgress(0);
         setNote('');
+        setStage('');
         try {
-          const blob = await recordAnimation(frameRef.current, { duration, fps, onProgress: setProgress });
+          const blob = await recordAnimation(frameRef.current, {
+            duration,
+            fps,
+            cuts,
+            music: custom ? 'none' : music,
+            musicBuffer: custom || undefined,
+            onStage: setStage,
+            onProgress: setProgress,
+          });
           if (!blob || !blob.size) throw new Error('录制结果为空');
           download(blob, `${anim.title || anim.id || 'animation'}.webm`);
-          setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB`);
+          setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB${custom || music !== 'none' ? '（含配乐）' : ''}`);
         } catch (error) {
           setNote(`导出失败：${error.message}`);
         } finally {
           setBusy('');
+          setStage('');
         }
-      }, [busy, duration, fps, anim]);
+      }, [busy, duration, fps, music, custom, cuts, anim]);
+
+      const scoreOptions = MUSIC_PRESETS;
 
       return h('div', { className: 'cas-card' },
         h('div', { className: 'cas-card-head' },
@@ -259,13 +359,14 @@ window.__ModuleLoader__.load({
               anim.styleId ? `${anim.styleId} ${anim.styleName || ''}`.trim() : '',
               `${duration}s`,
               `${fps}fps`,
+              cuts.length ? `卡点 ${cuts.length} 处` : '',
             ].filter(Boolean).join(' · ')),
           h('span', { className: 'cas-grow' }),
           h('button', {
             className: 'cas-btn cas-btn-primary',
             onClick: onExport,
             disabled: !!busy,
-          }, busy === 'export' ? `录制中 ${Math.round(progress * 100)}%` : '导出视频'),
+          }, busy === 'export' ? (stage || `录制中 ${Math.round(progress * 100)}%`) : '导出视频'),
         ),
         h('div', { className: 'cas-stage', 'data-aspect': aspect },
           h('iframe', {
@@ -295,6 +396,35 @@ window.__ModuleLoader__.load({
             value: scrub, onChange: (e) => applyScrub(e.target.value),
           }),
           h('span', { className: 'cas-t' }, `${Number(scrub).toFixed(2)}s / ${duration}s`),
+        ),
+        h('div', { className: 'cas-score' },
+          h('span', { className: 'cas-score-label' }, '配乐'),
+          h('select', {
+            className: 'cas-select',
+            value: custom ? 'custom' : music,
+            onChange: (e) => {
+              if (e.target.value === 'custom') { if (fileRef.current) fileRef.current.click(); return; }
+              setCustom(null);
+              setCustomName('');
+              setMusic(e.target.value);
+            },
+          },
+            scoreOptions.map((p) => h('option', { key: p.id, value: p.id }, p.label)),
+            h('option', { value: 'custom' }, customName ? `自定义：${customName}` : '自定义音频…'),
+          ),
+          cuts.length
+            ? h('span', { className: 'cas-score-hint' }, `已按 ${cuts.length} 个切点卡拍`)
+            : h('span', { className: 'cas-score-hint' }, '先在分镜里定切点，配乐会自动卡拍'),
+          h('span', { className: 'cas-grow' }),
+          h('button', {
+            className: 'cas-btn',
+            onClick: onPreview,
+            disabled: !!busy || (!custom && music === 'none'),
+          }, previewRef.current ? '停止试听' : '试听'),
+          h('input', {
+            ref: fileRef, type: 'file', accept: 'audio/*',
+            style: { display: 'none' }, onChange: onPickFile,
+          }),
         ),
         (anim.warnings && anim.warnings.length)
           ? h('div', { className: 'cas-warn' }, `建议检查：${anim.warnings.join('；')}`)
@@ -404,6 +534,11 @@ window.__ModuleLoader__.load({
 
         if (call.name === 'save_storyboard') {
           const shots = Array.isArray(args.shots) ? args.shots : [];
+          // Shot starts after 0 are the cut points the score will be fitted to.
+          const cuts = shots
+            .map((s) => Number(s.start))
+            .filter((t) => Number.isFinite(t) && t > 0.05)
+            .sort((a, b) => a - b);
           return {
             ...state,
             storyboards: [...state.storyboards, {
@@ -412,6 +547,8 @@ window.__ModuleLoader__.load({
               styleName: '',
               duration: Number(args.duration) || 0,
               aspect: String(args.aspect || ''),
+              music: String(args.music || ''),
+              cuts,
               shots: shots.map((s, i) => ({
                 index: i + 1,
                 start: Number(s.start) || 0,
@@ -432,6 +569,10 @@ window.__ModuleLoader__.load({
             || String(args.storyboard_id || '').replace(/^sb-/, 'anim-');
           if (!id) return state;
           const warn = (new RegExp('^(?:注意|建议检查)：(.+)$', 'm').exec(text) || [])[1];
+          // The linked storyboard supplies the cut points, so the score can be fitted
+          // to the real edits rather than to a fixed tempo.
+          const board = state.storyboards.find((b) => b.id === args.storyboard_id)
+            || state.storyboards[state.storyboards.length - 1];
           return {
             ...state,
             animations: [...state.animations, {
@@ -441,6 +582,8 @@ window.__ModuleLoader__.load({
               styleName: '',
               duration: Number(args.duration) || 8,
               fps: Number(args.fps) || 30,
+              music: String(args.music || (board && board.music) || ''),
+              cuts: board ? board.cuts || [] : [],
               warnings: warn ? warn.split('；').map((s) => s.trim()).filter(Boolean) : [],
             }],
           };

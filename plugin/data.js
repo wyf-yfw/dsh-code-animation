@@ -93,5 +93,35 @@ export function describe(style) {
     stillUrl: style.still ? `/code-animation-api/still/${style.id}` : '',
     prompt: style.prompt,
     promptChars: (style.prompt || '').length,
+    music: defaultMusicFor(style),
   };
+}
+
+/**
+ * Score presets, mirroring the client's `MUSIC_PRESETS`.
+ * Kept here so the Host can suggest one before the browser ever renders.
+ */
+export const MUSIC_PRESETS = ['none', 'ambient', 'pulse', 'bright', 'epic', 'lofi', 'guofeng', 'synth'];
+
+/**
+ * Pick a score for a style.
+ *
+ * The series carries most of the signal (a Chinese-ink piece and a cyberpunk piece
+ * should not get the same bed), with tags refined on top: 3D leans cinematic, and a
+ * monochrome plate wants something sparser.
+ */
+export function defaultMusicFor(style) {
+  const series = String(style?.series || '').toUpperCase();
+  const tags = (style?.tags || []).join(' ');
+  const text = `${style?.name || ''} ${style?.desc || ''} ${style?.fit || ''}`;
+
+  if (series === 'Z') return 'guofeng';
+  if (/中国风|水墨|敦煌|京剧|皮影|剪纸|年画|青花|书法/.test(text)) return 'guofeng';
+  if (/赛博|霓虹|cyber|朋克|末日|故障|合成波|CRT|glitch/i.test(text)) return 'synth';
+  if (/B&W|黑白/.test(tags) || /默片|银版|黑白/.test(text)) return 'ambient';
+  if (series === 'O' || series === 'L') return 'epic';
+  if (/\b3D\b/.test(tags)) return 'epic';
+  if (series === 'K' || series === 'M') return 'bright';
+  if (series === 'R') return 'synth';
+  return 'pulse';
 }

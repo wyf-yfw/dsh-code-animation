@@ -11,7 +11,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { OUTPUT_DIR, STILLS_DIR, catalog, describe, searchStyles, styleById } from './data.js';
+import { OUTPUT_DIR, MUSIC_PRESETS, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_STILLS_PER_CALL = 4;
@@ -100,6 +100,23 @@ function inspectShots(shots, duration) {
   }
 
   return { warnings, totalSeconds: round(covered) };
+}
+
+/**
+ * Resolve which score a clip should carry.
+ *
+ * An explicit request wins; otherwise the style implies a mood, so a Chinese-ink piece
+ * and a cyberpunk piece do not end up with the same bed.
+ * @param requested - the caller's `music` argument, if any.
+ * @param style - the chosen style, when known.
+ * @returns a preset id from MUSIC_PRESETS.
+ */
+function resolveMusic(requested, style) {
+  const wanted = String(requested || '').trim().toLowerCase();
+  if (wanted === 'none' || wanted === 'off' || wanted === '无' || wanted === '无配乐') return 'none';
+  if (MUSIC_PRESETS.includes(wanted)) return wanted;
+  if (style) return defaultMusicFor(style);
+  return 'pulse';
 }
 
 /**
@@ -304,6 +321,11 @@ export function registerCreationTools(deps) {
         duration: { type: 'number', description: '总时长（秒）。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
         aspect: { type: 'string', description: '画幅。', enum: ['16:9', '9:16', '1:1'] },
+        music: {
+          type: 'string',
+          description: `配乐风格，会随片长与切点自动卡拍。可选：${MUSIC_PRESETS.join(' / ')}。留空则按风格自动挑。`,
+          enum: MUSIC_PRESETS,
+        },
         shots: {
           type: 'array',
           description: '镜头列表，按时间顺序。',
@@ -335,11 +357,12 @@ export function registerCreationTools(deps) {
           duration: { type: 'number' },
           fps: { type: 'integer' },
           aspect: { type: 'string' },
+          music: { type: 'string' },
           totalSeconds: { type: 'number' },
           shots: { type: 'array', items: { type: 'object', additionalProperties: true } },
           warnings: { type: 'array', items: { type: 'string' } },
         },
-        required: ['id', 'title', 'duration', 'fps', 'aspect', 'shots', 'warnings'],
+        required: ['id', 'title', 'duration', 'fps', 'aspect', 'music', 'shots', 'warnings'],
         additionalProperties: false,
       },
       render: (_args, value) => [{
@@ -348,7 +371,8 @@ export function registerCreationTools(deps) {
           `分镜草稿「${value.title}」${value.styleId ? `（${value.styleId} ${value.styleName || ''}）` : ''}：${value.shots.length} 场 / ${value.duration}s`,
           ...value.shots.map((s, i) => `${i + 1}. ${s.start}–${s.end}s｜${s.scene}${s.text ? `｜字幕「${s.text}」` : ''}${s.camera ? `｜${s.camera}` : ''}`),
           value.warnings.length ? `\n需要留意：${value.warnings.join('；')}` : '',
-          '\n请用户审这份分镜：要不要加场、删场、改时长、改文案。拍板之前不要开始写动画。',
+          `\n分镜 id：${value.id}　配乐：${value.music}`,
+          '请用户审这份分镜：要不要加场、删场、改时长、改文案。拍板之前不要开始写动画。',
         ].filter(Boolean).join('\n'),
       }],
       presentationMeta: (_args, value) => value,
@@ -361,6 +385,7 @@ export function registerCreationTools(deps) {
       const aspect = ['16:9', '9:16', '1:1'].includes(args?.aspect) ? args.aspect : '16:9';
       const style = args?.style_id ? styleById(args.style_id) : undefined;
       const { warnings, totalSeconds } = inspectShots(shots, duration);
+      const music = resolveMusic(args?.music, style);
 
       const id = `sb-${slug(args?.title)}-${Date.now().toString(36)}`;
       const storyboard = {
@@ -371,6 +396,7 @@ export function registerCreationTools(deps) {
         duration,
         fps,
         aspect,
+        music,
         totalSeconds,
         shots: shots.map((s, i) => ({
           index: i + 1,
@@ -403,6 +429,11 @@ export function registerCreationTools(deps) {
         title: { type: 'string', description: '这个动画叫什么，用于卡片标题和文件名。' },
         style_id: { type: 'string', description: '采用的风格编号，如 B3。' },
         storyboard_id: { type: 'string', description: '已拍板的分镜 id（save_storyboard 的返回值）。' },
+        music: {
+          type: 'string',
+          description: `配乐风格。留空则沿用分镜的配乐，再留空则按风格自动挑。可选：${MUSIC_PRESETS.join(' / ')}。`,
+          enum: MUSIC_PRESETS,
+        },
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
         html: { type: 'string', description: '完整的动画 HTML 文件正文。' },
@@ -419,6 +450,8 @@ export function registerCreationTools(deps) {
           styleId: { type: 'string' },
           styleName: { type: 'string' },
           storyboardId: { type: 'string' },
+          music: { type: 'string' },
+          cuts: { type: 'array', items: { type: 'number' }, description: '切点秒数，配乐按这些点卡拍。' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
           url: { type: 'string' },
@@ -435,7 +468,8 @@ export function registerCreationTools(deps) {
           `片长 ${value.duration}s · ${value.fps}fps · ${(value.bytes / 1024).toFixed(0)} KB`,
           value.warnings.length ? `注意：${value.warnings.join('；')}` : '',
           `地址：${value.url}`,
-          '对话末尾已显示预览卡片，可拖动查看任意时刻，也可以直接导出视频。',
+          `配乐：${value.music}${value.cuts.length ? `（按 ${value.cuts.length} 个切点卡拍）` : ''}`,
+          '对话末尾已显示预览卡片：可拖动查看、换配乐、试听，也可以直接导出视频。',
         ].filter(Boolean).join('\n'),
       }],
       presentationMeta: (_args, value) => value,
@@ -450,9 +484,12 @@ export function registerCreationTools(deps) {
       const style = args?.style_id ? styleById(args.style_id) : undefined;
       const storyboardId = String(args?.storyboard_id || '');
 
+      // The storyboard supplies both the score choice and the cut points; without it
+      // the score still works, it just has no edits to land on.
+      let board;
       if (storyboardId) {
         try {
-          readFileSync(join(OUTPUT_DIR, `${storyboardId}.json`), 'utf8');
+          board = JSON.parse(readFileSync(join(OUTPUT_DIR, `${storyboardId}.json`), 'utf8'));
         } catch {
           warnings.push(`找不到分镜 ${storyboardId}，卡片不会带分镜信息`);
         }
@@ -460,8 +497,16 @@ export function registerCreationTools(deps) {
         warnings.push('没有关联分镜：这版动画未经用户拍板');
       }
 
-      const duration = Math.max(1, Math.min(Number(args?.duration) || 8, 120));
-      const fps = Math.max(1, Math.min(Number(args?.fps) || 30, 60));
+      const music = resolveMusic(args?.music || (board && board.music), style);
+      const cuts = Array.isArray(board?.shots)
+        ? board.shots
+          .map((shot) => round(Number(shot.start) || 0))
+          .filter((t) => t > 0.05 && t < (Number(args?.duration) || board.duration || 8))
+          .sort((a, b) => a - b)
+        : [];
+
+      const duration = Math.max(1, Math.min(Number(args?.duration) || board?.duration || 8, 120));
+      const fps = Math.max(1, Math.min(Number(args?.fps) || board?.fps || 30, 60));
       const id = `anim-${slug(args?.title)}-${Date.now().toString(36)}`;
 
       mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -472,6 +517,8 @@ export function registerCreationTools(deps) {
         title: String(args?.title || '动画'),
         styleId: style ? style.id : '',
         styleName: style ? style.name : '',
+        music,
+        cuts,
         duration,
         fps,
         url: `/code-animation-api/animation/${id}`,

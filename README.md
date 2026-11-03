@@ -15,7 +15,8 @@
 [![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
 
 [![tools](https://img.shields.io/badge/tools-5-ff9a4d?style=flat-square)](#五个工具)
-[![export](https://img.shields.io/badge/export-WebM-3fd7c0?style=flat-square)](#导出视频)
+[![export](https://img.shields.io/badge/export-WebM%20%2B%20Opus-3fd7c0?style=flat-square)](#导出视频)
+[![score](https://img.shields.io/badge/score-8%20presets-ffc04d?style=flat-square)](#配乐按风格挑按切点卡拍)
 [![deps](https://img.shields.io/badge/deps-0-2f9e6e?style=flat-square)](#亮点)
 [![PRs](https://img.shields.io/badge/PRs-welcome-e0457b?style=flat-square)](#参与)
 
@@ -57,6 +58,46 @@ sequenceDiagram
 ```
 
 **没有第二次模型调用。** 写代码的就是已经在对话里、手上有你全部上下文的那个 Agent —— 它知道你前面聊了什么、你的品牌色是什么、你刚才否掉了哪版。
+
+### 配乐：按风格挑，按切点卡拍
+
+导出的片子**默认带配乐**。没有音频素材、不联网、不碰版权——整条音轨是用 Web Audio **程序化合成**的。
+
+**① 配乐跟着风格走**
+
+八个预设，风格决定默认值，你不满意可以随时换：
+
+| 预设 | 用在什么风格上 |
+|---|---|
+| `guofeng` 国风 | Z 中国风全部；水墨 / 敦煌 / 皮影 / 剪纸（五声音阶 + 拨弦） |
+| `epic` 史诗 | O 奥斯卡（3D 优先）、L Lemo-Opuscar |
+| `synth` 合成波 | 赛博 / 霓虹 / CRT / 故障 / R 系列 |
+| `ambient` 氛围 | 黑白与默片题材、O 系列的 2D·B&W |
+| `bright` 轻快 | K 卡通画风、M 动态风格 |
+| `pulse` 脉冲 | AG 代码样片、H 版式、V、X |
+| `lofi` | 想要颗粒感时手动选 |
+| `none` | 静音 |
+
+**② 配乐跟着切点卡拍**
+
+分镜里每个镜头的起止时间就是配乐的重音落点。导出时不是套一个固定 BPM，而是**反推**：遍历 60–180 BPM，选出让所有切点最贴近节拍（且优先落在小节线上）的那个速度，然后在每个切点上叠一记 crash + 低音，前面加一小段上行音。
+
+```
+分镜：  0 ──── 1.5 ──── 3.0 ──── 4.5 ──── 6.0s
+配乐：  ↓        ↓        ↓        ↓
+       起拍    重音     重音     重音    收尾
+               速度拟合结果：160 BPM（每场 4 拍，正好落在小节线上）
+```
+
+实测：切点处的能量是周围的约 2 倍（0.21 vs 0.10–0.15 RMS），听得出来。
+
+**③ 也能用你自己的音频**
+
+卡片上选「自定义音频…」，导出时会把你的文件混进去，短文件自动循环补满整片、末尾自动淡出。
+
+**④ 可复现**
+
+同一个种子渲染出的音轨逐样本一致。换种子才会得到不同的曲子。
 
 ### 三道门禁
 
@@ -142,7 +183,7 @@ sequenceDiagram
 <td width="50%" valign="top">
 
 <h3>📦 零外部依赖</h3>
-<p>不需要 ffmpeg、不需要 playwright、不需要联网。录制走浏览器原生 <code>MediaRecorder</code>。</p>
+<p>不需要 ffmpeg、不需要 playwright、不需要联网、不需要音频素材。录制走浏览器原生 <code>MediaRecorder</code>，配乐用 Web Audio 现场合成。</p>
 
 </td>
 <td width="50%" valign="top">
@@ -324,9 +365,10 @@ dsh-code-animation/
 │   ├── index.js             # Host：路由 + 挂载工具/流程；按 config 决定装哪一半
 │   ├── flow.js              # 六步流程与三道门禁的系统提示段落
 │   ├── tools.js             # 五个工具的 schema、校验与执行
-│   ├── data.js              # 风格目录的检索与投影
-│   ├── client.js            # 浏览器半边：回合末尾的创作卡片
+│   ├── data.js              # 风格目录的检索、投影与「风格 → 配乐」映射
+│   ├── client.js            # 浏览器半边：回合末尾的创作卡片（含配乐引擎）
 │   ├── src/ui.js            # client.js 的可读源码（build.cjs 产出 client.js）
+│   ├── src/music.js         # 程序化配乐：八个预设 + 切点卡拍 + 离线渲染
 │   ├── styles.json          # 341 条风格（含完整提示词）
 │   ├── stills/              # 193 张参考静帧，按风格编号命名
 │   └── cordis.patch.yml     # 顶层行：只开路由
@@ -378,21 +420,27 @@ node docs/shoot-cover.cjs      # 产出 1280×640 @2x 的 docs/cover.png
 卡片上的「导出视频」按钮：
 
 1. 读取 iframe 里的 `<canvas>`
-2. `captureStream(0)` + 逐帧 `renderAt(i / fps)` + `requestFrame()`
-3. `MediaRecorder` 编码成 **WebM** 下载
+2. 按分镜切点渲染配乐，混成一条音轨
+3. `captureStream(0)` + 逐帧 `renderAt(i / fps)` + `requestFrame()`
+4. `MediaRecorder` 把画面和声音编成 **WebM**（VP9 + Opus）下载
 
 要 MP4 就自己转一下：
 
 ```bash
-ffmpeg -i code-animation-B3.webm -c:v libx264 -pix_fmt yuv420p out.mp4
+ffmpeg -i code-animation-B3.webm -c:v libx264 -c:a aac -pix_fmt yuv420p out.mp4
 ```
+
+> 浏览器只在 `MediaRecorder` 支持 Opus 时才带上音轨；不支持时会退化成无声，
+> 卡片上会写明导出结果。Chrome / Edge 都支持。
 
 ---
 
 ## 已知限制
 
-- 导出是 **WebM**，不是 MP4
+- 导出是 **WebM**（VP9 + Opus），不是 MP4
 - 逐帧录制是**实时**的：8 秒 30fps 大约要 8 秒，期间别切走标签页（浏览器会节流后台标签）
+- 配乐是程序化合成的，**不是真实乐器录音**；它胜在免费、可复现、能卡点，不比商业音源
+- 自定义音频只在浏览器里混入，**不会上传**，也不会写回工作区
 - 341 条里 **148 条没有参考静帧**，卡片会如实标注「无静帧」
 - 风格提示词里的 `{{ }}` 占位符原样保留，由 Agent 在生成时按你说的内容填
 - 动画必须落在 `<canvas>` 上；纯 DOM / CSS 动画能预览但**录不了**
