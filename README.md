@@ -44,7 +44,7 @@ Agent：list_styles("粒子")        → 检索到 B3 粒子聚形（带参考�
 需要 dsh 0.2.1 及以上。
 
 ```bash
-git clone https://github.com/<you>/dsh-code-animation.git
+git clone https://github.com/wyf-yfw/dsh-code-animation.git
 ```
 
 然后在 dsh 里安装两个 bundle（两个都要装，缺一不可）：
