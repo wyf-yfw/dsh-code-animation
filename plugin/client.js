@@ -61,6 +61,11 @@ window.__ModuleLoader__.load({
 .cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;max-height:520px}
 .cas-frame{display:block;width:100%;height:100%;border:0;background:#05070b}
 .cas-bar{display:flex;align-items:center;gap:9px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1)}
+.cas-play-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);
+  background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);display:inline-flex;
+  align-items:center;justify-content:center;cursor:pointer;font-size:12px;padding:0;flex-shrink:0;user-select:none}
+.cas-play-btn:hover{background:var(--dsw-alias-bg-layer-3);border-color:var(--dsw-alias-border-l2)}
+.cas-play-btn:active{transform:scale(0.96)}
 .cas-scrub{flex:1;accent-color:var(--dsw-alias-label-secondary);min-width:0}
 .cas-t{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
   color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -860,6 +865,10 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const [targetDir, setTargetDir] = useState('');
       const [customDir, setCustomDir] = useState('');
       const [aspect, setAspect] = useState('16:9');
+      const [playing, setPlaying] = useState(false);
+      const animFrameRef = useRef(null);
+      const scrubRef = useRef(0);
+      scrubRef.current = scrub;
       const [music, setMusic] = useState(anim.music || 'none');
       const [custom, setCustom] = useState(null);
       const [customName, setCustomName] = useState('');
@@ -906,6 +915,44 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         if (win && typeof win.renderAt === 'function') {
           try { win.renderAt(Number(value)); } catch { /* one bad frame must not break the card */ }
         }
+      }, []);
+
+      const stopPlayback = useCallback(() => {
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = null;
+        }
+        setPlaying(false);
+      }, []);
+
+      const togglePlay = useCallback(() => {
+        if (playing) {
+          stopPlayback();
+        } else {
+          let startT = Number(scrubRef.current);
+          if (startT >= duration - 0.05) {
+            startT = 0;
+            applyScrub(0);
+          }
+          setPlaying(true);
+          const startWallTime = performance.now() - startT * 1000;
+          const step = (now) => {
+            const curT = (now - startWallTime) / 1000;
+            if (curT >= duration) {
+              applyScrub(duration);
+              setPlaying(false);
+              animFrameRef.current = null;
+            } else {
+              applyScrub(curT);
+              animFrameRef.current = requestAnimationFrame(step);
+            }
+          };
+          animFrameRef.current = requestAnimationFrame(step);
+        }
+      }, [playing, duration, applyScrub, stopPlayback]);
+
+      useEffect(() => () => {
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       }, []);
 
       const onPreview = useCallback(() => {
@@ -1048,11 +1095,29 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           }),
         ),
         h('div', { className: 'cas-bar' },
+          h('button', {
+            className: 'cas-play-btn',
+            title: playing ? '暂停' : '播放',
+            onClick: togglePlay,
+          }, playing ? '⏸' : '▶'),
           h('input', {
             className: 'cas-scrub', type: 'range', min: 0, max: duration, step: 0.05,
-            value: scrub, onChange: (e) => applyScrub(e.target.value),
+            value: scrub,
+            onChange: (e) => {
+              stopPlayback();
+              applyScrub(e.target.value);
+            },
           }),
           h('span', { className: 'cas-t' }, `${Number(scrub).toFixed(2)}s / ${duration}s`),
+          h('button', {
+            className: 'cas-play-btn',
+            style: { width: '24px', height: '24px', fontSize: '11px' },
+            title: '从头播放',
+            onClick: () => {
+              stopPlayback();
+              applyScrub(0);
+            },
+          }, '↺'),
         ),
         h('div', { className: 'cas-score' },
           h('span', { className: 'cas-score-label' }, '配乐'),
