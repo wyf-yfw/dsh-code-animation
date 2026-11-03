@@ -1,0 +1,282 @@
+[
+  {
+    "id": "kick-底鼓",
+    "group": "acoustic",
+    "claim": "底鼓 kick：低频冲击，几乎没有音高感，短促",
+    "file": "kick-底鼓.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.0994,
+    "brightness": 0.4
+  },
+  {
+    "id": "snare-军鼓",
+    "group": "acoustic",
+    "claim": "军鼓 snare：中频噪声「沙」加一点鼓皮音",
+    "file": "snare-军鼓.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.0422,
+    "brightness": 8.8
+  },
+  {
+    "id": "hat-closed-闭合踩镲",
+    "group": "acoustic",
+    "claim": "闭合踩镲 closed hat：极短、很亮、只有「呲」一声",
+    "file": "hat-closed-闭合踩镲.wav",
+    "seconds": 0.12,
+    "peak": 0.7,
+    "rms": 0.083,
+    "brightness": 22.1
+  },
+  {
+    "id": "hat-open-开镲",
+    "group": "acoustic",
+    "claim": "开镲 open hat：同样的高频，但尾巴拖长",
+    "file": "hat-open-开镲.wav",
+    "seconds": 0.9,
+    "peak": 0.7,
+    "rms": 0.0889,
+    "brightness": 22.1
+  },
+  {
+    "id": "tom-通鼓",
+    "group": "acoustic",
+    "claim": "通鼓 tom：有明确音高的鼓，比军鼓低沉、比底鼓高",
+    "file": "tom-通鼓.wav",
+    "seconds": 0.7,
+    "peak": 0.7,
+    "rms": 0.1988,
+    "brightness": 0.4
+  },
+  {
+    "id": "crash-吊镲",
+    "group": "acoustic",
+    "claim": "吊镲 crash：宽频金属噪声，尾巴很长，用在句尾或重拍",
+    "file": "crash-吊镲.wav",
+    "seconds": 1.4,
+    "peak": 0.7,
+    "rms": 0.0859,
+    "brightness": 22.1
+  },
+  {
+    "id": "pluck-guzheng-古筝拨弦",
+    "group": "acoustic",
+    "claim": "古筝 / 拨弦：明亮的拨弦，起音有「啪」的噪声，余音有金属感、拖得长",
+    "file": "pluck-guzheng-古筝拨弦.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.0721,
+    "brightness": 5.6
+  },
+  {
+    "id": "pluck-guitar-clean-清音吉他",
+    "group": "acoustic",
+    "claim": "清音吉他：同一类拨弦、同一音高，但更闷、衰减更快、没有金属余韵",
+    "file": "pluck-guitar-clean-清音吉他.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.057,
+    "brightness": 5.3
+  },
+  {
+    "id": "lead-distorted-失真主音",
+    "group": "acoustic",
+    "claim": "失真吉他 / 合成主音：持续音，波形被削平，沙哑有攻击性",
+    "file": "lead-distorted-失真主音.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.1398,
+    "brightness": 2
+  },
+  {
+    "id": "flute-dizi-竹笛",
+    "group": "acoustic",
+    "claim": "竹笛 / 长笛：柔和持续音，带明显气声和轻微颤动",
+    "file": "flute-dizi-竹笛.wav",
+    "seconds": 1.6,
+    "peak": 0.482,
+    "rms": 0.24,
+    "brightness": 2.3
+  },
+  {
+    "id": "pad-strings-弦乐铺底",
+    "group": "acoustic",
+    "claim": "弦乐铺底 pad：缓慢起音、没有明显节奏、宽而厚",
+    "file": "pad-strings-弦乐铺底.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.2296,
+    "brightness": 1.2
+  },
+  {
+    "id": "bass-sub-低频贝斯",
+    "group": "acoustic",
+    "claim": "低音贝斯 sub：极低频，音高明确但听感更像「震动」",
+    "file": "bass-sub-低频贝斯.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.1981,
+    "brightness": 0.2
+  },
+  {
+    "id": "bell-钟铃",
+    "group": "acoustic",
+    "claim": "钟 / 铃：非整数倍泛音，听起来是金属而不是乐器音",
+    "file": "bell-钟铃.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.1962,
+    "brightness": 8.9
+  },
+  {
+    "id": "marimba-马林巴",
+    "group": "acoustic",
+    "claim": "马林巴 / 木琴：木头味，短促，余音有「咚」的共鸣",
+    "file": "marimba-马林巴.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.103,
+    "brightness": 1.8
+  },
+  {
+    "id": "riser-上行扫频",
+    "group": "acoustic",
+    "claim": "上行扫频 riser：音高和亮度一起往上冲，用来铺垫卡点前一秒",
+    "file": "riser-上行扫频.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.1207,
+    "brightness": 19.5
+  },
+  {
+    "id": "impact-落重音",
+    "group": "acoustic",
+    "claim": "落重音 impact：切点用，低频下潜 + 撞击噪声，比底鼓更重更长",
+    "file": "impact-落重音.wav",
+    "seconds": 1.6,
+    "peak": 0.7,
+    "rms": 0.1144,
+    "brightness": 4.9
+  },
+  {
+    "id": "kick-808-808底鼓",
+    "group": "electronic",
+    "claim": "808 底鼓：低频拖尾很长，像有音高的「轰」，Trap/嘻哈里那种",
+    "file": "kick-808-808底鼓.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.2394,
+    "brightness": 0.1
+  },
+  {
+    "id": "bass-acid-303-酸性贝斯",
+    "group": "electronic",
+    "claim": "酸性贝斯 303：锯齿过强共振滤波，每个音都有「呜」的滤波扫动，黏连滑音",
+    "file": "bass-acid-303-酸性贝斯.wav",
+    "seconds": 2.4,
+    "peak": 0.375,
+    "rms": 0.24,
+    "brightness": 0.9
+  },
+  {
+    "id": "lead-supersaw-超级锯齿主音",
+    "group": "electronic",
+    "claim": "超级锯齿 supersaw：多层失谐锯齿叠在一起，宽、亮、有合唱感",
+    "file": "lead-supersaw-超级锯齿主音.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.0866,
+    "brightness": 3
+  },
+  {
+    "id": "pluck-synth-合成拨弦",
+    "group": "electronic",
+    "claim": "合成拨弦 pluck：起音很亮然后瞬间变闷，是「嗒—嗯」而不是「啪」",
+    "file": "pluck-synth-合成拨弦.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.218,
+    "brightness": 2.1
+  },
+  {
+    "id": "arp-16th-琶音序列",
+    "group": "electronic",
+    "claim": "琶音 arp：十六分音符快速跑动，每个音很短，形成连续上行/下行",
+    "file": "arp-16th-琶音序列.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.2012,
+    "brightness": 2.7
+  },
+  {
+    "id": "bass-fm-FM贝斯",
+    "group": "electronic",
+    "claim": "FM 贝斯：低频但起音带金属「叮」的一声，靠频率调制做出来",
+    "file": "bass-fm-FM贝斯.wav",
+    "seconds": 2.4,
+    "peak": 0.465,
+    "rms": 0.24,
+    "brightness": 7.6
+  },
+  {
+    "id": "pad-gated-trance-门限铺底",
+    "group": "electronic",
+    "claim": "门限铺底 trance gate：和弦被节奏切成一格一格，有「哒哒哒哒」的断续感",
+    "file": "pad-gated-trance-门限铺底.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.1794,
+    "brightness": 1.2
+  },
+  {
+    "id": "lead-square-chip-芯片方波",
+    "group": "electronic",
+    "claim": "芯片音 chip lead：方波、单薄、有点刺耳，红白机那种",
+    "file": "lead-square-chip-芯片方波.wav",
+    "seconds": 2.4,
+    "peak": 0.286,
+    "rms": 0.24,
+    "brightness": 1.3
+  },
+  {
+    "id": "bass-wobble-抖动贝斯",
+    "group": "electronic",
+    "claim": "抖动贝斯 wobble：低频被一个周期性滤波器扫动，产生「哇—哇—」的律动",
+    "file": "bass-wobble-抖动贝斯.wav",
+    "seconds": 2.4,
+    "peak": 0.313,
+    "rms": 0.24,
+    "brightness": 0.5
+  },
+  {
+    "id": "noise-downlifter-下坠噪声",
+    "group": "electronic",
+    "claim": "下坠噪声 downlifter：亮度和音高一起往下掉，用在段落结束处",
+    "file": "noise-downlifter-下坠噪声.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.1359,
+    "brightness": 20.3
+  },
+  {
+    "id": "pad-sidechain-侧链泵动",
+    "group": "electronic",
+    "claim": "侧链泵动 sidechain：铺底每隔一拍被压下去再弹回来，像被鼓「推」着",
+    "file": "pad-sidechain-侧链泵动.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.1696,
+    "brightness": 1.4
+  },
+  {
+    "id": "drum-fourfloor-四踩律动",
+    "group": "electronic",
+    "claim": "四踩 four-on-floor：每拍一记底鼓，配二四拍军鼓和八分踩镲，浩室/ tekn o 的基础律动",
+    "file": "drum-fourfloor-四踩律动.wav",
+    "seconds": 2.4,
+    "peak": 0.7,
+    "rms": 0.1406,
+    "brightness": 1.3
+  }
+]
