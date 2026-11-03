@@ -238,6 +238,7 @@ window.__ModuleLoader__.load({
       const total = Math.max(1, Math.round(opts.duration * fps));
       const hasRenderAt = typeof win.renderAt === 'function';
       const t0 = performance.now();
+      let audioPeak = 0;
 
       if (source) {
         // A suspended context yields no audio, and without an output device resume()
@@ -375,7 +376,6 @@ window.__ModuleLoader__.load({
       const [savedPath, setSavedPath] = useState('');
       const [targetDir, setTargetDir] = useState('');
       const [aspect, setAspect] = useState('16:9');
-      let audioPeak = 0;
       const [music, setMusic] = useState(anim.music || 'none');
       const [custom, setCustom] = useState(null);
       const [customName, setCustomName] = useState('');

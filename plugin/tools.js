@@ -234,6 +234,7 @@ export function registerCreationTools(deps) {
         properties: {
           shown: { type: 'array', items: { type: 'object', additionalProperties: true } },
           missing: { type: 'array', items: { type: 'string' } },
+          note: { type: 'string' },
         },
         required: ['shown', 'missing'],
         additionalProperties: false,
