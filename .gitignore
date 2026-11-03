@@ -1,0 +1,9 @@
+# Runtime output written by save_animation and the route log.
+plugin/created/
+plugin/api.log
+
+# Tooling
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

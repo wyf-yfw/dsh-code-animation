@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-code-animation-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "创作模式：用 341 种代码动画风格在对话里直接出片。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

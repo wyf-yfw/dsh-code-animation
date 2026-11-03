@@ -1,0 +1,9 @@
+# Profile-root row: serves catalog assets and generated animations.
+# The 创作模式 preset mounts a second row with `tools: true` for its creation tools;
+# routes stay here because they are profile-wide and would collide otherwise.
+- insert:
+    - id: code-animation-studio
+      name: '@local/dsh-code-animation'
+      config:
+        tools: false
+        routes: true
