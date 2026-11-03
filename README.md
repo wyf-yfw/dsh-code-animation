@@ -8,15 +8,16 @@
 
 **把 341 种代码动画风格接进对话框。说一句话，Agent 写代码，动画直接出现在对话里。**
 
-[![Stars](https://img.shields.io/github/stars/wyf-yfw/dsh-code-animation?style=for-the-badge&logo=github&color=ff8a3d&labelColor=1a1c22)](https://github.com/wyf-yfw/dsh-code-animation/stargazers)
-[![License](https://img.shields.io/badge/LICENSE-MIT-3ea675?style=for-the-badge&labelColor=1a1c22)](LICENSE)
-[![Styles](https://img.shields.io/badge/风格提示词-341-e0457b?style=for-the-badge&labelColor=1a1c22)](#风格库)
-[![Stills](https://img.shields.io/badge/参考静帧-193-7b5bff?style=for-the-badge&labelColor=1a1c22)](#风格库)
+[![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-code-animation?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-code-animation/stargazers)
+[![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
+[![styles](https://img.shields.io/badge/styles-341-e0457b?style=flat-square)](#风格库)
+[![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
 
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek-Harness-4d6bfe?style=for-the-badge&labelColor=1a1c22)](https://github.com/deepseek-ai/dsh)
-[![Tools](https://img.shields.io/badge/工具-3_个-ff9a4d?style=for-the-badge&labelColor=1a1c22)](#三个工具)
-[![Export](https://img.shields.io/badge/导出-WebM-3fd7c0?style=for-the-badge&labelColor=1a1c22)](#导出视频)
-[![PRs](https://img.shields.io/badge/PRs-welcome-e0457b?style=for-the-badge&labelColor=1a1c22)](#参与)
+[![tools](https://img.shields.io/badge/tools-3-ff9a4d?style=flat-square)](#三个工具)
+[![export](https://img.shields.io/badge/export-WebM-3fd7c0?style=flat-square)](#导出视频)
+[![deps](https://img.shields.io/badge/deps-0-2f9e6e?style=flat-square)](#亮点)
+[![PRs](https://img.shields.io/badge/PRs-welcome-e0457b?style=flat-square)](#参与)
 
 </div>
 
