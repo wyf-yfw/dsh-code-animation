@@ -2,6 +2,9 @@
 plugin/created/
 plugin/api.log
 
+# Local README render used to check how GitHub parses the markup.
+docs/readme-preview.html
+
 # Tooling
 node_modules/
 .DS_Store

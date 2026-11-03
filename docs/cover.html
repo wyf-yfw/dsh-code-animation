@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Code Animation Studio — cover</title>
+<style>
+  :root{
+    --bg:#08090d;
+    --ink:#f5f6f8;
+    --muted:#8b9099;
+    --line:rgba(255,255,255,.09);
+    --accent-a:#ff8a3d;
+    --accent-b:#e0457b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1280px;height:640px;overflow:hidden}
+  body{
+    background:var(--bg);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    color:var(--ink);
+    position:relative;
+  }
+  /* ambient glows */
+  .glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.55;pointer-events:none}
+  .g1{width:620px;height:620px;left:-180px;bottom:-300px;background:radial-gradient(circle,#ff7a2d,transparent 68%)}
+  .g2{width:560px;height:560px;right:-140px;top:-260px;background:radial-gradient(circle,#7b3dff,transparent 68%);opacity:.4}
+  .g3{width:420px;height:420px;right:120px;bottom:-240px;background:radial-gradient(circle,#e0457b,transparent 70%);opacity:.35}
+
+  /* 341 style tiles as texture */
+  .tiles{position:absolute;inset:0;display:grid;grid-template-columns:repeat(20,1fr);
+    grid-auto-rows:1fr;gap:5px;padding:18px;opacity:.85;pointer-events:none}
+  .tile{border-radius:2px;background:rgba(255,255,255,.05)}
+  .veil{position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 18% 45%, rgba(8,9,13,.96) 0%, rgba(8,9,13,.86) 38%, rgba(8,9,13,.4) 66%, transparent 100%),
+      linear-gradient(90deg, rgba(8,9,13,.97) 0%, rgba(8,9,13,.6) 46%, rgba(8,9,13,.1) 70%, rgba(8,9,13,.55) 100%);
+  }
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(135% 120% at 50% 50%, transparent 52%, rgba(4,5,8,.72) 100%)}
+
+  .wrap{position:relative;z-index:2;height:100%;display:flex;align-items:center;
+    padding:0 64px;gap:44px}
+
+  /* left: wordmark */
+  .left{flex:1 1 0;min-width:0}
+  .pill{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;
+    border:1px solid rgba(255,255,255,.14);border-radius:999px;
+    font-size:12.5px;letter-spacing:.4px;color:#cfd3d9;background:rgba(255,255,255,.04)}
+  .pill i{width:7px;height:7px;border-radius:2px;
+    background:linear-gradient(135deg,var(--accent-a),var(--accent-b));display:block}
+
+  h1{font-size:56px;line-height:1.12;letter-spacing:-1.2px;font-weight:800;margin-top:22px}
+  h1 em{font-style:normal;background:linear-gradient(100deg,#ffb066,#ff7a9c 55%,#c07dff);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .en{margin-top:10px;font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;
+    font-size:14px;letter-spacing:3.4px;color:#6f7581;text-transform:uppercase}
+  .desc{margin-top:26px;font-size:17px;line-height:1.75;color:#c3c8d0;max-width:520px}
+  .desc b{color:#fff;font-weight:600}
+  .stats{display:flex;gap:26px;margin-top:30px}
+  .stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-.5px;
+    background:linear-gradient(180deg,#fff,#b9bec7);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat span{font-size:12px;color:#767c88;letter-spacing:.6px}
+  .url{margin-top:34px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#5d636e}
+
+  /* right: chat mock */
+  .right{flex:0 0 470px;position:relative}
+  .card{background:rgba(20,21,27,.92);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.05);
+    overflow:hidden;backdrop-filter:blur(8px)}
+  .chat{padding:16px 18px 14px}
+  .who{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#7b818c;margin-bottom:9px}
+  .who .dot{width:5px;height:5px;border-radius:50%;background:#3ea675}
+  .bubble{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.07);
+    border-radius:11px;padding:11px 13px;font-size:13.5px;line-height:1.6;color:#e7eaf0}
+  .bubble span{color:#ffb066}
+
+  .steps{display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px 14px}
+  .step{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#a9b0bb;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);
+    border-radius:6px;padding:4px 8px;display:flex;align-items:center;gap:5px}
+  .step b{color:#ffb066;font-weight:600}
+  .step.done::before{content:"";width:4px;height:4px;border-radius:50%;background:#3ea675}
+
+  .player{border-top:1px solid var(--line);position:relative;height:196px;overflow:hidden;
+    background:radial-gradient(120% 130% at 50% 20%,#141a2c,#080a10 70%)}
+  .player .orb{position:absolute;border-radius:50%;filter:blur(22px)}
+  .o1{width:150px;height:150px;left:50%;top:44%;transform:translate(-50%,-50%);
+    background:radial-gradient(circle,#ff9a4d,#e0457b 60%,transparent 72%);opacity:.85}
+  .o2{width:74px;height:74px;left:26%;top:62%;background:radial-gradient(circle,#7b5bff,transparent 70%);opacity:.7}
+  .o3{width:60px;height:60px;left:70%;top:30%;background:radial-gradient(circle,#3fd7c0,transparent 70%);opacity:.5}
+  .grain{position:absolute;inset:0;opacity:.16;
+    background-image:radial-gradient(rgba(255,255,255,.7) .6px,transparent .6px);
+    background-size:3px 3px}
+  .play{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+    width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.94);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .play::after{content:"";width:0;height:0;margin-left:3px;
+    border-left:13px solid #14151b;border-top:8px solid transparent;border-bottom:8px solid transparent}
+
+  .bar{position:absolute;left:14px;right:14px;bottom:12px;display:flex;align-items:center;gap:10px}
+  .track{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.16);position:relative}
+  .track i{position:absolute;left:0;top:0;bottom:0;width:42%;border-radius:2px;
+    background:linear-gradient(90deg,var(--accent-a),var(--accent-b))}
+  .track em{position:absolute;left:42%;top:50%;transform:translate(-50%,-50%);
+    width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,138,61,.28)}
+  .time{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b919c}
+
+  .foot{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 16px;border-top:1px solid var(--line);background:rgba(255,255,255,.02)}
+  .foot .name{font-size:12px;color:#cfd3da;font-weight:600}
+  .foot .tag{font-size:10.5px;color:#7b818c;font-family:ui-monospace,Menlo,monospace}
+  .export{font-size:11px;font-weight:700;color:#0b0c10;background:linear-gradient(135deg,#ffb066,#ff7a9c);
+    border-radius:6px;padding:5px 10px}
+</style>
+</head>
+<body>
+  <div class="tiles" id="tiles"></div>
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div class="glow g3"></div>
+  <div class="veil"></div>
+  <div class="vignette"></div>
+
+  <div class="wrap">
+    <div class="left">
+      <div class="pill"><i></i>DeepSeek Harness 插件</div>
+      <h1>代码动画<em>工作台</em></h1>
+      <div class="en">Code Animation Studio</div>
+      <div class="desc">
+        <b>341 种</b>代码动画风格提示词，<b>193 张</b>参考静帧。<br>
+        在对话框里说一句话，Agent 直接写代码出片。
+      </div>
+      <div class="stats">
+        <div class="stat"><b>341</b><span>风格提示词</span></div>
+        <div class="stat"><b>193</b><span>参考静帧</span></div>
+        <div class="stat"><b>3</b><span>创作工具</span></div>
+        <div class="stat"><b>1</b><span>句话出片</span></div>
+      </div>
+      <div class="url">github.com/wyf-yfw/dsh-code-animation</div>
+    </div>
+
+    <div class="right">
+      <div class="card">
+        <div class="chat">
+          <div class="who"><span class="dot"></span>创作模式</div>
+          <div class="bubble">用 <span>B3 粒子聚形</span>做一个 3 秒的片子，内容是「选个风格就能出片」</div>
+        </div>
+        <div class="steps">
+          <div class="step done"><b>list_styles</b> 粒子</div>
+          <div class="step done"><b>get_style</b> B3</div>
+          <div class="step done"><b>save_animation</b></div>
+        </div>
+        <div class="player">
+          <div class="orb o1"></div>
+          <div class="orb o2"></div>
+          <div class="orb o3"></div>
+          <div class="grain"></div>
+          <div class="play"></div>
+          <div class="bar">
+            <span class="time">0.00</span>
+            <div class="track"><i></i><em></em></div>
+            <span class="time">3.00s</span>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="name">B3 粒子聚形</span>
+          <span class="tag">3s · 30fps</span>
+          <span class="export">导出视频</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // 20 x 17 = 340 tiles: the style library doubling as texture.
+  const tiles = document.getElementById('tiles');
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < 340; i++) {
+    const d = document.createElement('div');
+    d.className = 'tile';
+    const hue = (i * 47) % 360;
+    const lit = (i * 7 + 11) % 34 === 0;
+    d.style.background = lit
+      ? `hsl(${hue} 85% 62% / .5)`
+      : `hsl(${hue} 40% 60% / .07)`;
+    frag.appendChild(d);
+  }
+  tiles.appendChild(frag);
+</script>
+</body>
+</html>
