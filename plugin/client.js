@@ -851,13 +851,14 @@ async function audioFileToBuffer(file, duration, sampleRate) {
      * somewhere the user can find; the card shows that absolute path before and after
      * the export, and keeps a browser download as a secondary action.
      */
-    function AnimationCard({ anim, cwd }) {
+    function AnimationCard({ anim, cwd, uiWorkspace }) {
       const [scrub, setScrub] = useState(0);
       const [busy, setBusy] = useState('');
       const [progress, setProgress] = useState(0);
       const [note, setNote] = useState('');
       const [savedPath, setSavedPath] = useState('');
       const [targetDir, setTargetDir] = useState('');
+      const [customDir, setCustomDir] = useState('');
       const [aspect, setAspect] = useState('16:9');
       const [music, setMusic] = useState(anim.music || 'none');
       const [custom, setCustom] = useState(null);
@@ -927,6 +928,26 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         }
       }, [duration]);
 
+      const onPickDirectory = useCallback(async () => {
+        if (uiWorkspace && typeof uiWorkspace.pickDirectory === 'function') {
+          try {
+            const chosen = await uiWorkspace.pickDirectory();
+            if (chosen) {
+              setCustomDir(chosen);
+              setTargetDir(chosen);
+              return;
+            }
+          } catch (e) {
+            console.warn('uiWorkspace.pickDirectory error:', e);
+          }
+        }
+        const val = window.prompt('请输入保存视频的目标文件夹路径（绝对路径）：', customDir || targetDir || cwd || '');
+        if (val && val.trim()) {
+          setCustomDir(val.trim());
+          setTargetDir(val.trim());
+        }
+      }, [uiWorkspace, customDir, targetDir, cwd]);
+
       const onExport = useCallback(async () => {
         if (busy) return;
         setBusy('export');
@@ -960,7 +981,8 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           setStage('正在写入工作区…');
           try {
             const query = new URLSearchParams({ name: fileName });
-            if (cwd) query.set('dir', cwd);
+            const exportDir = customDir || cwd;
+            if (exportDir) query.set('dir', exportDir);
             const res = await fetch(`${API}/export?${query}`, {
               method: 'POST',
               headers: { 'content-type': blob.type || 'application/octet-stream' },
@@ -981,7 +1003,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           setBusy('');
           setStage('');
         }
-      }, [busy, duration, fps, music, custom, cuts, anim, activeFormat, cwd]);
+      }, [busy, duration, fps, music, custom, cuts, anim, activeFormat, customDir, cwd]);
 
       const scoreOptions = MUSIC_PRESETS;
 
@@ -1077,11 +1099,19 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         ),
         // State the destination before the export so the file is never a mystery.
         h('div', { className: 'cas-path' },
-          savedPath
-            ? h('span', { className: 'cas-path-ok' }, `已保存到 ${savedPath}`)
-            : (targetDir
-                ? h('span', null, `导出后将保存到 ${targetDir}`)
-                : h('span', null, '导出后将保存到会话工作目录下的 code-animation/')),
+          h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' } },
+            h('span', null, savedPath
+              ? h('span', { className: 'cas-path-ok' }, `已保存到 ${savedPath}`)
+              : (customDir || targetDir
+                  ? `导出目录：${customDir || targetDir}`
+                  : '导出目录：会话工作目录下的 code-animation/')),
+            h('button', {
+              className: 'cas-btn',
+              style: { fontSize: '11px', padding: '2px 8px', height: '22px' },
+              onClick: onPickDirectory,
+              disabled: !!busy,
+            }, '📂 选择文件夹…'),
+          ),
         ),
         (anim.warnings && anim.warnings.length)
           ? h('div', { className: 'cas-warn' }, `建议检查：${anim.warnings.join('；')}`)
@@ -1121,7 +1151,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           ? h(StillGallery, { stills: data.stills.items, note: data.stills.note, missing: data.stills.missing })
           : null,
         latestBoard ? h(StoryboardCard, { board: latestBoard }) : null,
-        latestAnim ? h(AnimationCard, { anim: latestAnim, cwd }) : null,
+        latestAnim ? h(AnimationCard, { anim: latestAnim, cwd, uiWorkspace: props.uiWorkspace }) : null,
       );
     }
 
@@ -1287,7 +1317,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           id: 'code-animation-studio',
           order: 30,
           label: '代码动画',
-        }, CreationTail));
+        }, (props) => h(CreationTail, { ...props, uiWorkspace: ctx.get('uiWorkspace') })));
       },
     };
   },

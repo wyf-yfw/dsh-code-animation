@@ -62,19 +62,26 @@ function safeFileName(raw, fallback) {
  * target stays inside it.
  */
 function resolveExportDir(requested, fallbackRoot) {
-  const candidates = [requested, fallbackRoot].filter((v) => typeof v === 'string' && v.trim());
-  for (const candidate of candidates) {
-    const root = resolve(candidate);
-    if (!isAbsolute(root) || !existsSync(root)) continue;
-    try {
-      if (!statSync(root).isDirectory()) continue;
-    } catch {
-      continue;
+  // If user explicitly picked a directory, honor it directly
+  if (typeof requested === 'string' && requested.trim()) {
+    const chosen = resolve(requested.trim());
+    if (isAbsolute(chosen) && existsSync(chosen)) {
+      try {
+        if (statSync(chosen).isDirectory()) return chosen;
+      } catch {}
     }
-    const target = join(root, EXPORT_DIR_NAME);
-    if (relative(root, target).startsWith('..')) continue;
-    return target;
   }
+
+  // Fallback to session working directory / code-animation
+  if (typeof fallbackRoot === 'string' && fallbackRoot.trim()) {
+    const root = resolve(fallbackRoot.trim());
+    if (isAbsolute(root) && existsSync(root)) {
+      try {
+        if (statSync(root).isDirectory()) return join(root, EXPORT_DIR_NAME);
+      } catch {}
+    }
+  }
+
   return join(OUTPUT_DIR, 'exports');
 }
 

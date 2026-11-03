@@ -10,7 +10,7 @@
 [![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
 [![styles](https://img.shields.io/badge/styles-341-e0457b?style=flat-square)](#风格库)
-[![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
+[![stills](https://img.shields.io/badge/stills-341-7b5bff?style=flat-square)](#风格库)
 
 [![tools](https://img.shields.io/badge/tools-5-ff9a4d?style=flat-square)](#工具参考)
 [![export](https://img.shields.io/badge/export-MP4%20H.264%2BAAC-3fd7c0?style=flat-square)](#导出)
@@ -27,7 +27,7 @@
 ## 概述
 
 本项目把 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)
-的 341 种风格提示词与 193 张参考静帧封装成 DeepSeek Harness 的一个 Agent 模式。
+的 341 种风格提示词与 341 张参考静帧（100% 覆盖）封装成 DeepSeek Harness 的一个 Agent 模式。
 在该模式下，Agent 通过五个工具检索风格、提交分镜、产出动画，成品以卡片形式出现在对话末尾，
 可直接预览与导出。
 
@@ -245,7 +245,7 @@ dsh plugin install ./dsh-code-animation/preset     # 声明「创作模式」
 | **Z** | 中国风 | 15 | | **R** | 照参考学来的 | 7 |
 | **H** | 现成版式 | 12 | | **O** | 奥斯卡 98 部 | 98 |
 
-合计 341 条，其中 193 条带参考静帧。
+合计 341 条，全量具备参考静帧（覆盖率 100%）。
 
 </div>
 
@@ -324,16 +324,18 @@ dsh plugin install ./dsh-code-animation/preset     # 声明「创作模式」
 4. `MediaRecorder` 编码
 5. 由 Host 写入**会话工作目录下的 `code-animation/`**，卡片显示完整路径
 
-### 文件位置
+### 文件位置与自定义保存目录
 
-成片不在浏览器下载目录里，而是写入会话工作目录：
+成片默认写入会话工作目录：
 
 ```
 <会话工作目录>/code-animation/<片名>.mp4
 ```
 
-卡片在导出前就显示目标目录，导出后替换为完整文件路径。
-若 Host 不可达，会自动退回浏览器下载，并在卡片上说明。
+卡片在导出前就显示目标目录，并提供「📂 选择文件夹…」按钮：
+- 支持唤起本地文件夹选择窗口，自由指定任意保存目录（如桌面或其他工程文件夹）
+- 导出后直接保存到选定目录，并替换为完整文件路径
+- 若 Host 不可达，会自动退回浏览器下载，并在卡片上说明。
 
 ### 导出状态
 
@@ -453,7 +455,6 @@ node docs/shoot-cover.cjs      # 输出 1280×640 @2x 的 docs/cover.png
 - MP4 录制需要 Chromium 111+；Firefox 将回退至 WebM
 - 配乐为程序化合成，非真实乐器录音
 - 自定义音频仅在浏览器内混入，不上传，不写回工作区
-- 341 条风格中 148 条没有参考静帧，卡片会标注「无静帧」
 - 风格提示词中的 `{{ }}` 占位符原样保留，由 Agent 在生成时填入
 - 动画必须渲染到 `<canvas>`；纯 DOM / CSS 动画可预览但无法录制
 
@@ -482,7 +483,7 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
   "rev": 4,
   "tools": ["list_styles", "show_stills", "get_style", "save_storyboard", "save_animation"],
   "styles": 341,
-  "stills": 193
+  "stills": 341
 }
 ```
 
@@ -516,7 +517,7 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
 | 部分 | 许可 |
 |---|---|
 | 插件代码（`index.js`、`tools.js`、`data.js`、`flow.js`、`client.js`、`src/`） | MIT |
-| 341 条提示词与 193 张静帧 | 来自 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)，遵循其 `LICENSE.md` 与 `references/attribution.md` |
+| 341 条提示词与原始参考静帧 | 基础库来自 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)，遵循其 `LICENSE.md` 与 `references/attribution.md` |
 | 其中 L / V / X 系列 | 分别来自 Lemo-Opuscar、mg-styles-15、code-video，第三方许可见原仓库 `assets/library/第三方许可/` |
 
 再分发时请保留上述署名与第三方许可。素材版权归原作者。
