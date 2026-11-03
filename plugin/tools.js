@@ -33,13 +33,38 @@ function inspectHtml(html) {
   const problems = [];
   if (!/<html[\s>]/i.test(html)) problems.push('缺少 <html> 根元素');
   if (!/<canvas[\s>]/i.test(html)) problems.push('缺少 <canvas>（录制需要 canvas.captureStream）');
-  if (!/window\.renderAt\s*=/.test(html)) problems.push('缺少 window.renderAt = function(t)');
+  if (/window\.renderAt\s*=/.test(html) === false) problems.push('缺少 window.renderAt = function(t)');
   if (/Math\.random\s*\(/.test(html)) problems.push('使用了 Math.random()，必须改为固定种子随机');
   if (/requestAnimationFrame\s*\(/.test(html)) problems.push('使用了 requestAnimationFrame 自播，导出需要关闭它');
   if (/<script[^>]+\bsrc=/i.test(html)) problems.push('引用了外部脚本');
   if (/<img[^>]+\bsrc\s*=\s*["']https?:/i.test(html)) problems.push('引用了外部图片');
   if (/<link[^>]+stylesheet/i.test(html)) problems.push('引用了外部样式表');
   return problems;
+}
+
+/** Does the document paint into a canvas the exporter can capture? */
+function hasCanvas(html) {
+  if (/<canvas[\s>]/i.test(html)) return true;
+  // A page may create its canvas from script rather than markup.
+  return /createElement\(\s*['"]canvas['"]\s*\)/i.test(html);
+}
+
+/**
+ * Reject animations the exporter can never record.
+ *
+ * A DOM/CSS animation previews fine but cannot be captured frame by frame, so shipping
+ * it only moves the failure to the export button. Failing here lets the Agent fix it in
+ * the same turn instead.
+ */
+function assertRecordable(html) {
+  if (!hasCanvas(html)) {
+    throw new Error([
+      '这段动画没有渲染到 <canvas>，无法逐帧录制，导出会失败。',
+      '请改成纯 Canvas 2D 实现：页面里有一个可见的 <canvas>，所有画面用 ctx 绘制，',
+      'window.renderAt(t) 负责把画面渲染到 t 时刻。',
+      'DOM / CSS 做出来的动画（div、svg、文字排版动画）不能被 captureStream 捕获。',
+    ].join(''));
+  }
 }
 
 function slug(input) {
@@ -486,6 +511,9 @@ export function registerCreationTools(deps) {
       const bytes = Buffer.byteLength(html, 'utf8');
       if (bytes > MAX_HTML_BYTES) throw new Error(`HTML 过大（${(bytes / 1048576).toFixed(1)} MB），上限 2 MB`);
 
+      // 强制校验必须含有 <canvas>，若是 DOM/CSS 动画在此处直接报错并提示 Agent 修复
+      assertRecordable(html);
+
       const warnings = inspectHtml(html);
       const style = args?.style_id ? styleById(args.style_id) : undefined;
       const storyboardId = String(args?.storyboard_id || '');
@@ -543,4 +571,4 @@ export function registerCreationTools(deps) {
   };
 }
 
-export { inspectHtml, inspectShots };
+export { inspectHtml, inspectShots, assertRecordable };

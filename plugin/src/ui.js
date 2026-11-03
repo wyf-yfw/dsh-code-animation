@@ -142,12 +142,51 @@ window.__ModuleLoader__.load({
      *   Any audio is mixed at render time, so video and score start together.
      * @param opts.cuts - cut times in seconds; the score is fitted and accented to them.
      */
+    /**
+     * Find the canvas an export should record.
+     *
+     * The frame is loaded asynchronously and a page may create its canvas from script,
+     * so this waits for the document and retries instead of failing on a first miss.
+     * When several canvases exist the largest is used: decorative or helper canvases
+     * are typically small.
+     */
+    async function resolveCanvas(iframe, timeoutMs = 2000) {
+      const started = performance.now();
+      let doc;
+      let seen = '';
+
+      while (performance.now() - started < timeoutMs) {
+        doc = iframe && iframe.contentDocument;
+        if (doc && doc.readyState !== 'loading') {
+          const canvases = Array.from(doc.querySelectorAll('canvas'));
+          if (canvases.length) {
+            canvases.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+            return canvases[0];
+          }
+          // Remember what the page does contain, for an actionable failure message.
+          const counts = ['div', 'svg', 'video', 'img']
+            .map((tag) => [tag, doc.querySelectorAll(tag).length])
+            .filter(([, n]) => n > 0)
+            .map(([tag, n]) => `${n} 个 <${tag}>`);
+          seen = counts.join('、');
+        }
+        await new Promise((r) => setTimeout(r, 80));
+      }
+
+      const win = iframe && iframe.contentWindow;
+      const hasRenderAt = win && typeof win.renderAt === 'function';
+      throw new Error([
+        '画面里没有可录制的 <canvas>',
+        seen ? `（页面里找到 ${seen}）` : '',
+        hasRenderAt ? '' : '，且没有 window.renderAt',
+        '。这个动画是 DOM/CSS 绘制的，无法逐帧录制；需要让 Agent 改为渲染到 <canvas> 的实现。',
+      ].filter(Boolean).join(''));
+    }
+
     async function recordAnimation(iframe, opts) {
       const win = iframe && iframe.contentWindow;
-      const doc = iframe && iframe.contentDocument;
-      if (!win || !doc) throw new Error('预览还没准备好');
-      const canvas = doc.querySelector('canvas');
-      if (!canvas) throw new Error('画面里没有 <canvas>，无法逐帧录制');
+      if (!win) throw new Error('预览还没准备好');
+      const canvas = await resolveCanvas(iframe);
       if (typeof canvas.captureStream !== 'function') throw new Error('当前浏览器不支持 canvas.captureStream');
       const container = pickContainer(opts.container);
       if (!container) throw new Error('当前浏览器不支持 MediaRecorder 录制');

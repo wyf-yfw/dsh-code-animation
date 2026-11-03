@@ -63,6 +63,9 @@ export const FLOW_PROMPT = `## 创作流程
 
 ### 第 6 步 · 写动画并交付
 现在才动手写 HTML + Canvas 动画，然后调用 save_animation。
+必须满足：
+- 页面 HTML 必须显式包含一个 <canvas> 元素，画面全部用 Canvas 2D 或 WebGL 绘制，绝对禁止写纯 DOM/CSS 动效（DOM 元素无法被浏览器 MediaRecorder 捕获导出为视频）。
+- 必须实现 window.renderAt(t) 接口（t 为秒）。
 写完用 renderAt 自检首帧、中段、尾帧：不是黑屏、文字不溢出、不同时间画面确实在动。
 把"未走分镜确认"之类的提示当回事——那是流程被跳过的信号。
 
