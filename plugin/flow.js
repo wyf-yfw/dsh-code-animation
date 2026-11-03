@@ -64,12 +64,71 @@ export const FLOW_PROMPT = `## 创作流程
 绝对禁止只用普通文本让用户回复！
 用户确认之前不要进入第 6 步。提了修改意见就改分镜并重新提交。
 
-### 第 6 步 · 写动画并交付
-现在才动手写 HTML + Canvas 动画，然后调用 save_animation。
-必须满足：
+### 第 6 步 · 写动画与配乐，然后交付
+
+**两样东西都是你现写的代码，没有预设素材：**
+1. 动画 HTML（画面）
+2. 配乐合成代码（声音）
+
+现在动手写 HTML + Canvas 动画，然后调用 save_animation。
+
+画面必须满足：
 - 页面 HTML 必须显式包含一个 <canvas> 元素，画面全部用 Canvas 2D 或 WebGL 绘制，绝对禁止写纯 DOM/CSS 动效（DOM 元素无法被浏览器 MediaRecorder 捕获导出为视频）。
 - 必须实现 window.renderAt(t) 接口（t 为秒，同一时刻 t 渲染同一帧）。
-- 调用 save_animation 时把第 4 步定下的 music 提示词和全片 cues 一并传入；引擎会按这些时间点合成音轨并在该毫秒打击。
+
+#### 配乐：写 score_js，不要依赖内置引擎
+
+save_animation 的 score_js 参数是一段 Web Audio 合成代码，直接决定这条片子听起来是什么声音。
+**不要把它当装饰跳过。** 内置引擎只是兜底，音色是为通用场景准备的，配不上具体片子。
+
+代码是一个**函数体**（不要写 \`function(...)\` 头，不要 return），可用形参：
+- \`ctx\` — OfflineAudioContext
+- \`dest\` — 输出节点，把声音接到这里
+- \`duration\` — 片长（秒）
+- \`cuts\` — 切点秒数数组
+- \`cues\` — \`[{time, type, label}]\`
+- \`rand()\` — 可复现随机
+- \`hz(midi)\` — MIDI 转频率
+
+写法要点：
+- 用 \`ctx.createOscillator / createBufferSource / createBiquadFilter / createGain / createConvolver / createWaveShaper\` 现场搭音色。
+- **音色要对得上这条片子的气质**：想要古筝就写 Karplus-Strong 拨弦（噪声填 buffer + 反馈衰减 + 低通），想要竹笛就写噪声过共振峰 + 颤音，想要鼓就写正弦下扫加噪声瞬态，想要金属就写失谐方波过带通。
+- **每一个 cuts 和 cues 时间点都要有明确的声音事件**，直接用 \`start(t)\` 落在那个秒数上。这是卡点的全部意义。
+- 背景铺底要比卡点轻很多（大约 1/10），否则重击会被淹掉。
+- 所有节点必须在 duration 内收尾，函数里不要 await。
+
+示例（骨架，按需改写）：
+
+\`\`\`js
+const master = ctx.createGain();
+master.gain.value = 0.8;
+master.connect(dest);
+
+// 拨弦音色
+function pluck(freq, at, dur, vol) {
+  const n = Math.floor(ctx.sampleRate / freq);
+  const buf = ctx.createBuffer(1, n * 2, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = rand() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = freq * 8;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, at);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(at); src.stop(at + dur + 0.02);
+}
+
+// 背景铺底：轻
+for (let t = 0; t < duration; t += 0.5) pluck(hz(57 + [0,2,4,7,9][Math.floor(rand()*5)]), t, 1.2, 0.08);
+
+// 卡点：重
+for (const t of cuts) drum(t, 0.7);
+for (const c of cues) drum(c.time, 0.5);
+\`\`\`
+
 写完用 renderAt 自检首帧、中段、尾帧：不是黑屏、文字不溢出、不同时间画面确实在动。
 把"未走分镜确认"之类的提示当回事——那是流程被跳过的信号。
 
@@ -82,7 +141,7 @@ export const FLOW_PROMPT = `## 创作流程
 - **不要用 playwright / puppeteer** 打开动画去截图。
 - **不要手工拼视频文件**，也不要写自定义的 muxer。
 
-你要做的只有一件事：写 HTML，然后调用 save_animation。预览、配乐、导出视频都由对话末尾的卡片完成。
+你要做的只有两件事：写 HTML、写配乐代码，然后调用 save_animation。预览、合成、导出都由对话末尾的卡片完成。
 
 ### 交付物在哪里
 

@@ -28,6 +28,29 @@ function stripWrappers(text) {
   return body.trim();
 }
 
+/**
+ * Strip wrappers from model-written score code.
+ *
+ * The body is stored verbatim and later compiled in the browser, so it must be a bare
+ * function body: no fences, no `function renderScore(...)` header, no `return`.
+ */
+function stripScore(text) {
+  let body = String(text || '').trim();
+  if (!body) return '';
+  const fenced = /```(?:js|javascript|JS)?\s*([\s\S]*?)```/.exec(body);
+  if (fenced) body = fenced[1].trim();
+
+  // Accept a wrapped declaration and keep only its body.
+  const wrapped = /(?:async\s+)?function\s+\w*\s*\([^)]*\)\s*\{([\s\S]*)\}\s*$/.exec(body);
+  if (wrapped) body = wrapped[1].trim();
+
+  // An arrow function with a block body.
+  const arrow = /^(?:async\s*)?\([^)]*\)\s*=>\s*\{([\s\S]*)\}\s*$/.exec(body);
+  if (arrow) body = arrow[1].trim();
+
+  return body.trim();
+}
+
 /** Validate the contract the preview and exporter both rely on. */
 function inspectHtml(html) {
   const problems = [];
@@ -501,6 +524,21 @@ export function registerCreationTools(deps) {
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
         html: { type: 'string', description: '完整的动画 HTML 文件正文。' },
+        score_js: {
+          type: 'string',
+          description: [
+            '你自己为这个片子写的配乐合成代码（Web Audio）。不要用任何预设音色库。',
+            '代码是一个函数体，可用的形参：ctx（OfflineAudioContext）、dest（AudioNode 出口）、',
+            'duration（秒）、cuts（切点秒数数组）、cues（[{time,type,label}] 数组）、',
+            'rand（可复现随机函数）、hz（MIDI 转频率）。',
+            '在里面用 ctx.createOscillator / createBufferSource / createBiquadFilter / createGain 等搭音色，',
+            '把声音接到 dest 上，并在 ctx.currentTime 起算的绝对时间点上 schedule（用 start(t)）。',
+            '所有节点必须按 duration 收尾，不要在函数里 await。',
+            '写法参考：想要古筝就写带快速衰减的拨弦算法；想要竹笛就写噪声过共振峰；',
+            '想要鼓就写正弦下扫加噪声。完全按这个片子的气质现写，风格没有任何限制。',
+            '留空则退回内置合成引擎。',
+          ].join(''),
+        },
       },
       required: ['title', 'html'],
       additionalProperties: false,
@@ -517,6 +555,7 @@ export function registerCreationTools(deps) {
           music: { type: 'string' },
           cuts: { type: 'array', items: { type: 'number' }, description: '切点秒数，配乐按这些点卡拍。' },
           cues: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '精确卡点列表' },
+          scoreUrl: { type: 'string', description: '模型自写配乐的地址；空串表示使用内置引擎。' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
           url: { type: 'string' },
@@ -604,14 +643,27 @@ export function registerCreationTools(deps) {
       mkdirSync(OUTPUT_DIR, { recursive: true });
       writeFileSync(join(OUTPUT_DIR, `${id}.html`), html, 'utf8');
 
+      // A model-written score replaces the built-in engine entirely for this clip.
+      let scoreUrl = '';
+      const scoreJs = stripScore(args?.score_js);
+      if (scoreJs) {
+        if (!/createOscillator|createBufferSource|createGain|createBiquadFilter/.test(scoreJs)) {
+          warnings.push('自写配乐里没有创建任何音频节点，已退回内置引擎');
+        } else {
+          writeFileSync(join(OUTPUT_DIR, `${id}.score.js`), scoreJs, 'utf8');
+          scoreUrl = `/code-animation-api/score/${id}`;
+        }
+      }
+
       const value = {
         id,
         title: String(args?.title || '动画'),
         styleId: style ? style.id : '',
         styleName: style ? style.name : '',
-        music,
+        music: scoreUrl ? '模型自写配乐' : music,
         cuts,
         cues,
+        scoreUrl,
         duration,
         fps,
         url: `/code-animation-api/animation/${id}`,

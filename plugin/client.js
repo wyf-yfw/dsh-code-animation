@@ -759,6 +759,59 @@ async function audioFileToBuffer(file, duration, sampleRate) {
     }
 
     /**
+     * Render a score the model wrote for this clip.
+     *
+     * The code runs against an OfflineAudioContext with the same helpers the built-in
+     * engine uses, so a model-written score can do anything the engine can — it just is
+     * not limited to the engine's instrument set.
+     *
+     * @param url - `/code-animation-api/score/<id>`.
+     * @param options - `{ duration, cuts, cues }`.
+     * @returns the rendered AudioBuffer, or null when the code is missing or throws.
+     */
+    async function renderModelScore(url, options) {
+      const source = await fetch(url).then((r) => (r.ok ? r.text() : '')).catch(() => '');
+      if (!source) return null;
+
+      const duration = Math.max(0.5, Number(options.duration) || 8);
+      const sampleRate = 44100;
+      const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+
+      // A master gain the model connects into, so we can always find an output even if
+      // it forgets to connect to `dest`.
+      const out = ctx.createGain();
+      out.gain.value = 1;
+      out.connect(ctx.destination);
+
+      const rand = (() => {
+        let a = 20261103;
+        return () => {
+          a = (a + 0x6D2B79F5) | 0;
+          let t = Math.imul(a ^ (a >>> 15), 1 | a);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      })();
+      const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
+
+      try {
+        // eslint-disable-next-line no-new-func
+        const fn = new Function('ctx', 'dest', 'duration', 'cuts', 'cues', 'rand', 'hz', source);
+        fn(ctx, out, duration, options.cuts || [], options.cues || [], rand, hz);
+        const buffer = await ctx.startRendering();
+        let peak = 0;
+        for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+          const data = buffer.getChannelData(ch);
+          for (let i = 0; i < data.length; i += 7) peak = Math.max(peak, Math.abs(data[i]));
+        }
+        return peak > 1e-4 ? buffer : null;
+      } catch (error) {
+        console.warn('model score failed, falling back to the built-in engine:', error);
+        return null;
+      }
+    }
+
+    /**
      * Drive a detached document frame frame by frame and record it through MediaRecorder.
      * @param opts.music - a preset id, or an AudioBuffer for a user-supplied track.
      *   Any audio is mixed at render time, so video and score start together.
@@ -1137,14 +1190,22 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       // Render the score once so auditioning is instant and export reuses the buffer.
       useEffect(() => {
         if (custom) { scoreRef.current = custom; return undefined; }
-        if (!music || music === 'none') { scoreRef.current = null; return undefined; }
+        const hasModelScore = !!anim.scoreUrl;
+        if (!hasModelScore && (!music || music === 'none')) { scoreRef.current = null; return undefined; }
         let cancelled = false;
         scoreRef.current = null;
-        renderMusic(music, { duration, cuts, cues }).then((buffer) => {
-          if (!cancelled) scoreRef.current = buffer;
-        }).catch(() => {});
+
+        const build = hasModelScore
+          // Prefer the score the model wrote for this clip; the engine is the fallback.
+          ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues })
+              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues }))
+          : () => renderMusic(music, { duration, cuts, cues });
+
+        build()
+          .then((buf) => { if (!cancelled) scoreRef.current = buf; })
+          .catch(() => {});
         return () => { cancelled = true; };
-      }, [music, custom, duration, cuts, cues]);
+      }, [music, custom, duration, cuts, cues, anim.scoreUrl]);
 
       const onPickFile = useCallback(async (event) => {
         const file = event.target.files && event.target.files[0];
@@ -1187,6 +1248,13 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         setSavedPath('');
         setStage('');
         try {
+          // The score may still be rendering when export is pressed; wait for it so the
+          // exported audio is the same one the preview played.
+          let score = scoreRef.current;
+          if (!score && !custom && anim.scoreUrl) {
+            setStage('正在合成配乐…');
+            score = await renderModelScore(anim.scoreUrl, { duration, cuts, cues }).catch(() => null);
+          }
           const { blob, container, hasAudio, audioPeak } = await recordAnimation(frameRef.current, {
             duration,
             fps,
@@ -1194,7 +1262,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
             container: activeFormat,
             music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
-            scoreBuffer: scoreRef.current || undefined,
+            scoreBuffer: score || undefined,
             onStage: setStage,
             onProgress: setProgress,
           });

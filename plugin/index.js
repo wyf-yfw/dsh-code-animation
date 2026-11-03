@@ -176,6 +176,21 @@ export function apply(ctx, config = {}) {
             }), 'application/json; charset=utf-8');
           }
 
+          // The model-written score is served as script text; the client compiles it
+          // into a function and runs it against an OfflineAudioContext.
+          if (url.startsWith(`${PREFIX}/score/`)) {
+            const id = safeId(url.slice(`${PREFIX}/score/`.length));
+            const file = id ? join(OUTPUT_DIR, `${id}.score.js`) : '';
+            if (!file || !existsSync(file)) return send(res, 404, 'not found');
+            const body = readFileSync(file, 'utf8');
+            res.writeHead(200, {
+              'content-type': 'text/javascript; charset=utf-8',
+              'content-length': Buffer.byteLength(body),
+              'cache-control': 'no-store',
+            });
+            return res.end(body);
+          }
+
           if (url.startsWith(`${PREFIX}/still/`)) {
             const id = safeId(url.slice(`${PREFIX}/still/`.length));
             const file = id ? join(STILLS_DIR, `${id}.jpg`) : '';
