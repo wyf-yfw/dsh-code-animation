@@ -14,6 +14,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { OUTPUT_DIR, STILLS_DIR, catalog } from './data.js';
+import { registerFlowSection } from './flow.js';
 import { registerCreationTools } from './tools.js';
 
 const PREFIX = '/code-animation-api';
@@ -53,13 +54,13 @@ export function apply(ctx, config = {}) {
   const withRoutes = config.routes !== false;
 
   if (withTools) {
-    ctx.effect(() => {
-      const observe = () => {
-        const tools = ctx.get('tools');
-        return tools ? registerCreationTools(tools) : undefined;
-      };
-      return observe();
-    }, 'code-animation-studio:tools');
+    ctx.effect(() => registerCreationTools({
+      tools: ctx.get('tools'),
+      attachments: ctx.get('attachments'),
+    }), 'code-animation-studio:tools');
+
+    // The staged flow is a policy, so it lives in the prompt rather than in a tool.
+    ctx.effect(() => registerFlowSection(ctx.get('systemPrompt')), 'code-animation-studio:flow');
   }
 
   if (withRoutes) {

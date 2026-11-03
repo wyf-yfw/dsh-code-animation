@@ -1,17 +1,20 @@
 /**
- * Creation-mode tools: the conversation itself writes the animation.
+ * Creation-mode tools.
  *
- * `list_styles` searches the 341-entry catalog; `save_animation` takes the HTML the
- * model wrote, stores it, and returns a card the conversation renders as a live,
- * scrubbable animation. No second model call is involved — the Agent that already
- * holds the user's context is the one that authors the code.
+ * The flow they support (enforced by flow.js, not by these tools):
+ *   list_styles -> show_stills -> [用户拍板风格] -> get_style
+ *   -> save_storyboard -> [用户拍板分镜] -> save_animation
+ *
+ * No second model call happens here: the Agent that already holds the user's
+ * context is the one that authors the animation.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { OUTPUT_DIR, catalog, describe, searchStyles, styleById } from './data.js';
+import { OUTPUT_DIR, STILLS_DIR, catalog, describe, searchStyles, styleById } from './data.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
+const MAX_STILLS_PER_CALL = 4;
 
 /** Strip the wrappers a model habitually adds around a file body. */
 function stripWrappers(text) {
@@ -26,7 +29,7 @@ function stripWrappers(text) {
 }
 
 /** Validate the contract the preview and exporter both rely on. */
-function inspect(html) {
+function inspectHtml(html) {
   const problems = [];
   if (!/<html[\s>]/i.test(html)) problems.push('缺少 <html> 根元素');
   if (!/<canvas[\s>]/i.test(html)) problems.push('缺少 <canvas>（录制需要 canvas.captureStream）');
@@ -49,19 +52,74 @@ function slug(input) {
   return base || 'animation';
 }
 
+function round(value, digits = 2) {
+  const factor = 10 ** digits;
+  return Math.round(Number(value) * factor) / factor;
+}
+
 /**
- * Register the creation tools on the given registry.
- * @param tools - the `ctx.tools` registry of the realm that should own these tools.
+ * Check a shot list for the mistakes that make a storyboard unusable.
+ * @returns warnings plus the total covered seconds; warnings render on the card.
  */
-export function registerCreationTools(tools) {
+function inspectShots(shots, duration) {
+  const warnings = [];
+  if (!Array.isArray(shots) || shots.length === 0) {
+    return { warnings: ['分镜为空'], totalSeconds: 0 };
+  }
+
+  const ordered = [...shots].sort((a, b) => Number(a.start) - Number(b.start));
+  let cursor = 0;
+  let covered = 0;
+
+  for (const [index, shot] of ordered.entries()) {
+    const start = Number(shot.start);
+    const end = Number(shot.end);
+    const label = `第 ${index + 1} 场`;
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      warnings.push(`${label}的起止时间不是数字`);
+      continue;
+    }
+    if (end <= start) warnings.push(`${label}的结束时间不大于开始时间`);
+    if (start < -0.001) warnings.push(`${label}开始时间早于 0`);
+    if (end > duration + 0.001) warnings.push(`${label}超出总时长 ${duration}s`);
+    if (start > cursor + 0.05) warnings.push(`${label}与上一场之间有 ${round(start - cursor)}s 空档`);
+    if (start < cursor - 0.05) warnings.push(`${label}与上一场时间重叠`);
+    if (!String(shot.scene || '').trim()) warnings.push(`${label}没有写画面内容`);
+
+    cursor = Math.max(cursor, end);
+    covered += Math.max(0, end - start);
+  }
+
+  if (ordered.length < 2) warnings.push('只有 1 场：分镜至少拆成 3 场才有节奏');
+  if (Math.abs(covered - duration) > 0.15) {
+    warnings.push(`各场时长合计 ${round(covered)}s，与总时长 ${duration}s 不一致`);
+  }
+  if (cursor < duration - 0.15) {
+    warnings.push(`最后一场在 ${round(cursor)}s 结束，距总时长 ${duration}s 还差 ${round(duration - cursor)}s`);
+  }
+
+  return { warnings, totalSeconds: round(covered) };
+}
+
+/**
+ * Register the creation tools.
+ * @param deps - `{ tools, attachments }` from the realm that owns them. `tools` is
+ *   required; `attachments` is optional and only disables inline reference stills,
+ *   which then fall back to their URLs.
+ */
+export function registerCreationTools(deps) {
+  const { tools, attachments } = deps || {};
+  if (!tools) throw new Error('registerCreationTools needs the tools registry');
   const disposers = [];
 
   disposers.push(tools.register({
     name: 'list_styles',
     description: [
-      '在 341 种代码动画风格里检索。用户说出气质、题材或编号时先调用它，再按选中的风格动手做动画。',
-      '返回每条风格的编号、名称、系列、适用题材、是否有参考静帧，以及完整风格提示词（prompt）。',
-      '选择规则：用户给了编号就精确匹配；只描述气质时挑 2–3 条最匹配的说明理由，用户已要求直接做就选最匹配的一条继续。',
+      '在 341 种代码动画风格里检索。用户说出气质、题材或编号时先调用它。',
+      '返回每条风格的编号、名称、系列、适用题材、是否有参考静帧，以及完整风格提示词。',
+      '检索结果只是候选清单：挑出 2–3 条之后，必须再用 show_stills 把画面给用户看。',
+      '选择规则：用户给了编号就精确匹配；只描述气质时挑 2–3 条最匹配的说明理由。',
       '不要把多条风格的约束机械叠加：主画风、运动方式、版式各选一条，各自负责一件事。',
     ].join('\n'),
     parameters: {
@@ -81,7 +139,6 @@ export function registerCreationTools(tools) {
         type: 'object',
         properties: {
           total: { type: 'integer' },
-          series: { type: 'array', items: { type: 'object', additionalProperties: true } },
           styles: { type: 'array', items: { type: 'object', additionalProperties: true } },
         },
         required: ['total', 'styles'],
@@ -91,24 +148,109 @@ export function registerCreationTools(tools) {
         type: 'text',
         text: value.styles.length
           ? value.styles.map((s) => `${s.id} ${s.name}（${s.seriesName}）｜${s.description}${s.hasStill ? '｜有参考静帧' : ''}`).join('\n')
+            + '\n\n下一步：用 show_stills 把候选的画面给用户看，然后再让用户选。'
           : '没有匹配的风格',
       }],
       presentationMeta: (_args, value) => ({ styles: value.styles }),
     },
     async execute(args) {
-      const { styles, series } = catalog();
+      const { styles } = catalog();
       const found = searchStyles(args?.query, { series: args?.series, limit: args?.limit });
-      return {
-        total: styles.length,
-        series: Object.entries(series).map(([id, name]) => ({ id, name })),
-        styles: found.map(describe),
-      };
+      return { total: styles.length, styles: found.map(describe) };
+    },
+  }));
+
+  disposers.push(tools.register({
+    name: 'show_stills',
+    description: [
+      '把选定风格的参考静帧作为图片贴进对话，让用户先看到画面再决定用哪一条。',
+      '推荐风格之后必须调用它：只靠文字描述，用户没法判断风格合不合口味。',
+      `一次最多贴 ${MAX_STILLS_PER_CALL} 张，通常给 2–3 条候选就够。没有参考静帧的风格会如实标出，此时用文字描述画面。`,
+      '贴完图就停下来等用户选，不要接着往下做。',
+    ].join('\n'),
+    parameters: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要展示的风格编号，如 ["B3","A1"]。',
+        },
+        note: { type: 'string', description: '一句话说明为什么给这几条，会显示在图片上方。' },
+      },
+      required: ['ids'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          shown: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          missing: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['shown', 'missing'],
+        additionalProperties: false,
+      },
+      render: (_args, value) => {
+        const blocks = [];
+        const lines = [];
+        if (value.note) lines.push(value.note);
+        for (const item of value.shown) {
+          lines.push(`${item.id} ${item.name}｜${item.description}`);
+          if (item.attachment) blocks.push({ type: 'image', attachment: item.attachment });
+        }
+        if (value.missing.length) {
+          lines.push(`没有参考静帧：${value.missing.join('、')}（这几条请用文字描述画面）`);
+        }
+        return [{ type: 'text', text: lines.join('\n') }, ...blocks];
+      },
+      presentationMeta: (_args, value) => ({
+        shown: value.shown.map(({ attachment, ...rest }) => rest),
+        missing: value.missing,
+      }),
+    },
+    async execute(args) {
+      const ids = Array.isArray(args?.ids) ? args.ids.slice(0, MAX_STILLS_PER_CALL) : [];
+      if (!ids.length) throw new Error('ids 不能为空');
+      const shown = [];
+      const missing = [];
+
+      for (const raw of ids) {
+        const style = styleById(raw);
+        if (!style) { missing.push(String(raw)); continue; }
+        if (!style.still) { missing.push(`${style.id} ${style.name}`); continue; }
+
+        let attachment;
+        if (attachments) {
+          try {
+            const data = readFileSync(join(STILLS_DIR, `${style.id}.jpg`));
+            attachment = await attachments.saveImage({
+              data,
+              mediaType: 'image/jpeg',
+              name: `${style.id}-${style.name}.jpg`,
+            });
+          } catch {
+            attachment = undefined; // the URL form below still tells the user which style it is
+          }
+        }
+        shown.push({
+          id: style.id,
+          name: style.name,
+          description: style.desc,
+          seriesName: style.seriesName,
+          ...(attachment ? { attachment } : {}),
+          url: `/code-animation-api/still/${style.id}`,
+        });
+      }
+
+      if (!shown.length) throw new Error(`这些编号没有可展示的静帧：${missing.join('、')}`);
+      return { shown, missing, note: String(args?.note || '') };
     },
   }));
 
   disposers.push(tools.register({
     name: 'get_style',
-    description: '读取某一条风格的完整提示词与参考静帧信息。动手做动画前调用它拿到该风格的完整规范。',
+    description: '读取某一条风格的完整提示词与参考静帧信息。用户拍板风格后、出分镜之前调用它。',
     parameters: {
       type: 'object',
       properties: { id: { type: 'string', description: '风格编号，如 B3、A1、O96。' } },
@@ -116,8 +258,6 @@ export function registerCreationTools(tools) {
       additionalProperties: false,
     },
     output: {
-      // An empty string stands for "no still": the schema dialect here accepts only
-      // single-type nodes, so a nullable union is not available.
       schema: {
         type: 'object',
         properties: {
@@ -134,7 +274,7 @@ export function registerCreationTools(tools) {
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `${value.id} ${value.name}\n\n${value.prompt || value.description || ''}`,
+        text: `${value.id} ${value.name}\n\n${value.prompt || value.description || ''}\n\n下一步：按这条规范拆 3–8 个镜头，用 save_storyboard 出分镜草稿，等用户拍板。`,
       }],
       presentationMeta: (_args, value) => value,
     },
@@ -149,9 +289,111 @@ export function registerCreationTools(tools) {
   }));
 
   disposers.push(tools.register({
+    name: 'save_storyboard',
+    description: [
+      '提交分镜草稿，在对话里渲染成可逐场审阅的分镜表。',
+      '每个镜头写清起止时间、画面内容、画面上的文字、运镜与转场。',
+      '分镜要覆盖开头、中段、结尾，各场时间合计等于总时长。',
+      '这一步不写动画代码。提交后停下来等用户拍板：加场、删场、改时长、改文案，改完重新提交。',
+    ].join('\n'),
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '这个片子叫什么。' },
+        style_id: { type: 'string', description: '已拍板的风格编号。' },
+        duration: { type: 'number', description: '总时长（秒）。' },
+        fps: { type: 'integer', description: '帧率，默认 30。' },
+        aspect: { type: 'string', description: '画幅。', enum: ['16:9', '9:16', '1:1'] },
+        shots: {
+          type: 'array',
+          description: '镜头列表，按时间顺序。',
+          items: {
+            type: 'object',
+            properties: {
+              start: { type: 'number', description: '开始时间（秒）。' },
+              end: { type: 'number', description: '结束时间（秒）。' },
+              scene: { type: 'string', description: '画面内容：谁、在哪、在做什么。' },
+              text: { type: 'string', description: '画面上出现的文字原文，没有就留空。' },
+              camera: { type: 'string', description: '运镜与转场，如「慢推」「硬切」「横向滑入」。' },
+            },
+            required: ['start', 'end', 'scene'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['title', 'duration', 'shots'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          title: { type: 'string' },
+          styleId: { type: 'string' },
+          styleName: { type: 'string' },
+          duration: { type: 'number' },
+          fps: { type: 'integer' },
+          aspect: { type: 'string' },
+          totalSeconds: { type: 'number' },
+          shots: { type: 'array', items: { type: 'object', additionalProperties: true } },
+          warnings: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['id', 'title', 'duration', 'fps', 'aspect', 'shots', 'warnings'],
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: [
+          `分镜草稿「${value.title}」${value.styleId ? `（${value.styleId} ${value.styleName || ''}）` : ''}：${value.shots.length} 场 / ${value.duration}s`,
+          ...value.shots.map((s, i) => `${i + 1}. ${s.start}–${s.end}s｜${s.scene}${s.text ? `｜字幕「${s.text}」` : ''}${s.camera ? `｜${s.camera}` : ''}`),
+          value.warnings.length ? `\n需要留意：${value.warnings.join('；')}` : '',
+          '\n请用户审这份分镜：要不要加场、删场、改时长、改文案。拍板之前不要开始写动画。',
+        ].filter(Boolean).join('\n'),
+      }],
+      presentationMeta: (_args, value) => value,
+    },
+    async execute(args) {
+      const shots = Array.isArray(args?.shots) ? args.shots : [];
+      if (!shots.length) throw new Error('shots 不能为空');
+      const duration = Math.max(1, Math.min(Number(args?.duration) || 8, 300));
+      const fps = Math.max(1, Math.min(Number(args?.fps) || 30, 60));
+      const aspect = ['16:9', '9:16', '1:1'].includes(args?.aspect) ? args.aspect : '16:9';
+      const style = args?.style_id ? styleById(args.style_id) : undefined;
+      const { warnings, totalSeconds } = inspectShots(shots, duration);
+
+      const id = `sb-${slug(args?.title)}-${Date.now().toString(36)}`;
+      const storyboard = {
+        id,
+        title: String(args?.title || '分镜'),
+        styleId: style ? style.id : '',
+        styleName: style ? style.name : '',
+        duration,
+        fps,
+        aspect,
+        totalSeconds,
+        shots: shots.map((s, i) => ({
+          index: i + 1,
+          start: round(Number(s.start) || 0),
+          end: round(Number(s.end) || 0),
+          scene: String(s.scene || ''),
+          text: String(s.text || ''),
+          camera: String(s.camera || ''),
+        })),
+        warnings,
+      };
+
+      mkdirSync(OUTPUT_DIR, { recursive: true });
+      writeFileSync(join(OUTPUT_DIR, `${id}.json`), JSON.stringify(storyboard, null, 2), 'utf8');
+      return storyboard;
+    },
+  }));
+
+  disposers.push(tools.register({
     name: 'save_animation',
     description: [
       '把一段动画 HTML 存到工作区，并在对话里渲染成可播放、可导出视频的动画卡片。',
+      '调用前应当已经完成：风格拍板（get_style）与分镜拍板（save_storyboard）。把分镜 id 传进 storyboard_id，卡片会带上分镜信息。',
       'HTML 必须满足：单个完整文件、只含原生 HTML/JS/Canvas、不引用任何外部库或图片、实现 window.renderAt(t)（t 为秒，同一 t 渲染同一帧）、使用固定种子随机、不启用 requestAnimationFrame 自播。',
       '生成后用 renderAt 检查首帧、中段、尾帧，确认不是黑屏或静止。',
     ].join('\n'),
@@ -159,7 +401,8 @@ export function registerCreationTools(tools) {
       type: 'object',
       properties: {
         title: { type: 'string', description: '这个动画叫什么，用于卡片标题和文件名。' },
-        style_id: { type: 'string', description: '采用的风格编号，如 B3。会显示在卡片上。' },
+        style_id: { type: 'string', description: '采用的风格编号，如 B3。' },
+        storyboard_id: { type: 'string', description: '已拍板的分镜 id（save_storyboard 的返回值）。' },
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
         html: { type: 'string', description: '完整的动画 HTML 文件正文。' },
@@ -175,6 +418,7 @@ export function registerCreationTools(tools) {
           title: { type: 'string' },
           styleId: { type: 'string' },
           styleName: { type: 'string' },
+          storyboardId: { type: 'string' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
           url: { type: 'string' },
@@ -190,7 +434,8 @@ export function registerCreationTools(tools) {
           `已生成动画「${value.title}」${value.styleId ? `（${value.styleId} ${value.styleName || ''}）` : ''}`,
           `片长 ${value.duration}s · ${value.fps}fps · ${(value.bytes / 1024).toFixed(0)} KB`,
           value.warnings.length ? `注意：${value.warnings.join('；')}` : '',
-          '对话里已显示预览卡片，可拖动查看任意时刻，也可以直接导出视频。',
+          `地址：${value.url}`,
+          '对话末尾已显示预览卡片，可拖动查看任意时刻，也可以直接导出视频。',
         ].filter(Boolean).join('\n'),
       }],
       presentationMeta: (_args, value) => value,
@@ -201,8 +446,20 @@ export function registerCreationTools(tools) {
       const bytes = Buffer.byteLength(html, 'utf8');
       if (bytes > MAX_HTML_BYTES) throw new Error(`HTML 过大（${(bytes / 1048576).toFixed(1)} MB），上限 2 MB`);
 
-      const problems = inspect(html);
-      const style = args.style_id ? styleById(args.style_id) : undefined;
+      const warnings = inspectHtml(html);
+      const style = args?.style_id ? styleById(args.style_id) : undefined;
+      const storyboardId = String(args?.storyboard_id || '');
+
+      if (storyboardId) {
+        try {
+          readFileSync(join(OUTPUT_DIR, `${storyboardId}.json`), 'utf8');
+        } catch {
+          warnings.push(`找不到分镜 ${storyboardId}，卡片不会带分镜信息`);
+        }
+      } else {
+        warnings.push('没有关联分镜：这版动画未经用户拍板');
+      }
+
       const duration = Math.max(1, Math.min(Number(args?.duration) || 8, 120));
       const fps = Math.max(1, Math.min(Number(args?.fps) || 30, 60));
       const id = `anim-${slug(args?.title)}-${Date.now().toString(36)}`;
@@ -210,7 +467,7 @@ export function registerCreationTools(tools) {
       mkdirSync(OUTPUT_DIR, { recursive: true });
       writeFileSync(join(OUTPUT_DIR, `${id}.html`), html, 'utf8');
 
-      return {
+      const value = {
         id,
         title: String(args?.title || '动画'),
         styleId: style ? style.id : '',
@@ -219,8 +476,10 @@ export function registerCreationTools(tools) {
         fps,
         url: `/code-animation-api/animation/${id}`,
         bytes,
-        warnings: problems,
+        warnings,
       };
+      if (storyboardId) value.storyboardId = storyboardId;
+      return value;
     },
   }));
 
@@ -230,3 +489,5 @@ export function registerCreationTools(tools) {
     }
   };
 }
+
+export { inspectHtml, inspectShots };
