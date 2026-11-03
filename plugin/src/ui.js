@@ -75,6 +75,10 @@ window.__ModuleLoader__.load({
   padding:0 6px;outline:none;max-width:190px}
 .cas-select:focus{border-color:var(--dsw-alias-border-l2)}
 .cas-score-hint{font-size:11px;color:var(--dsw-alias-state-idle-primary);white-space:nowrap}
+.cas-path{padding:7px 11px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dsw-alias-state-idle-primary);
+  word-break:break-all;background:var(--dsw-alias-bg-layer-2)}
+.cas-path-ok{color:var(--dsw-alias-state-success-primary)}
 .cas-lightbox{position:fixed;inset:0;z-index:9100;background:rgba(4,5,8,.88);display:flex;align-items:center;
   justify-content:center;padding:32px;cursor:zoom-out}
 .cas-lightbox img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -317,12 +321,20 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** The finished animation: pick a score, scrub any moment, then export. */
-    function AnimationCard({ anim }) {
+    /**
+     * The finished animation: pick a score and a container, scrub any moment, export.
+     *
+     * Exports are written to the session directory through the Host so the file lands
+     * somewhere the user can find; the card shows that absolute path before and after
+     * the export, and keeps a browser download as a secondary action.
+     */
+    function AnimationCard({ anim, cwd }) {
       const [scrub, setScrub] = useState(0);
       const [busy, setBusy] = useState('');
       const [progress, setProgress] = useState(0);
       const [note, setNote] = useState('');
+      const [savedPath, setSavedPath] = useState('');
+      const [targetDir, setTargetDir] = useState('');
       const [aspect, setAspect] = useState('16:9');
       let audioPeak = 0;
       const [music, setMusic] = useState(anim.music || 'none');
@@ -353,6 +365,17 @@ window.__ModuleLoader__.load({
       );
 
       useEffect(() => () => { if (previewRef.current) previewRef.current.stop(); }, []);
+
+      // Resolve the destination up front so the card can state it before exporting.
+      useEffect(() => {
+        let cancelled = false;
+        const query = cwd ? `?dir=${encodeURIComponent(cwd)}` : '';
+        fetch(`${API}/export-dir${query}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => { if (!cancelled && data && data.dir) setTargetDir(data.dir); })
+          .catch(() => {});
+        return () => { cancelled = true; };
+      }, [cwd]);
 
       const applyScrub = useCallback((value) => {
         setScrub(value);
@@ -387,6 +410,7 @@ window.__ModuleLoader__.load({
         setBusy('export');
         setProgress(0);
         setNote('');
+        setSavedPath('');
         setStage('');
         try {
           const { blob, container, hasAudio, audioPeak } = await recordAnimation(frameRef.current, {
@@ -400,23 +424,42 @@ window.__ModuleLoader__.load({
             onProgress: setProgress,
           });
           if (!blob || !blob.size) throw new Error('录制结果为空');
-          download(blob, `${anim.title || anim.id || 'animation'}.${container.ext}`);
+
           const wanted = custom || music !== 'none';
           // A zero peak means the browser never started audio: say so instead of
           // handing over a silent file as if it were scored.
           const audioNote = !wanted
-            ? ' · 无声'
+            ? '无声'
             : (hasAudio && audioPeak > 1e-4)
-              ? ' · 含配乐'
-              : ' · ⚠ 配乐未进入录制（浏览器音频未启动），这段是无声的';
-          setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB · ${container.label}${audioNote}`);
+              ? '含配乐'
+              : '⚠ 配乐未进入录制，这段是无声的';
+
+          const fileName = `${anim.title || anim.id || 'animation'}.${container.ext}`;
+          setStage('正在写入工作区…');
+          try {
+            const query = new URLSearchParams({ name: fileName });
+            if (cwd) query.set('dir', cwd);
+            const res = await fetch(`${API}/export?${query}`, {
+              method: 'POST',
+              headers: { 'content-type': blob.type || 'application/octet-stream' },
+              body: blob,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            setSavedPath(data.path);
+            setNote(`已导出 ${(blob.size / 1048576).toFixed(1)} MB · ${container.label} · ${audioNote}`);
+          } catch (error) {
+            // A Host that cannot be reached must not lose the render.
+            download(blob, fileName);
+            setNote(`已通过浏览器下载 ${fileName} · ${container.label} · ${audioNote}（写入工作区失败：${error.message}）`);
+          }
         } catch (error) {
           setNote(`导出失败：${error.message}`);
         } finally {
           setBusy('');
           setStage('');
         }
-      }, [busy, duration, fps, music, custom, cuts, anim, format]);
+      }, [busy, duration, fps, music, custom, cuts, anim, activeFormat, cwd]);
 
       const scoreOptions = MUSIC_PRESETS;
 
@@ -508,7 +551,15 @@ window.__ModuleLoader__.load({
           h('span', { className: 'cas-score-hint' },
             available.some((c) => c.id === 'mp4')
               ? 'MP4 为 H.264 + AAC，可直接发微信、剪映、Premiere'
-              : '当前浏览器不支持 MP4 录制，导出后可用 ffmpeg 转码'),
+              : '当前浏览器不支持 MP4 录制，可用 ffmpeg 转码'),
+        ),
+        // State the destination before the export so the file is never a mystery.
+        h('div', { className: 'cas-path' },
+          savedPath
+            ? h('span', { className: 'cas-path-ok' }, `已保存到 ${savedPath}`)
+            : (targetDir
+                ? h('span', null, `导出后将保存到 ${targetDir}`)
+                : h('span', null, '导出后将保存到会话工作目录下的 code-animation/')),
         ),
         (anim.warnings && anim.warnings.length)
           ? h('div', { className: 'cas-warn' }, `建议检查：${anim.warnings.join('；')}`)
@@ -526,6 +577,12 @@ window.__ModuleLoader__.load({
      */
     function CreationTail(props) {
       const data = props.turn && props.turn.data ? props.turn.data.get(KIND) : undefined;
+      const useSessions = props.useSessions;
+      const sessionId = props.sessionId;
+      // The session's working directory decides where exports land.
+      const cwd = useSessions && sessionId
+        ? useSessions((state) => state.byId[sessionId]?.cwd)
+        : undefined;
       if (!data) return null;
 
       const hasAnything = (data.stills && data.stills.items.length)
@@ -542,7 +599,7 @@ window.__ModuleLoader__.load({
           ? h(StillGallery, { stills: data.stills.items, note: data.stills.note, missing: data.stills.missing })
           : null,
         latestBoard ? h(StoryboardCard, { board: latestBoard }) : null,
-        latestAnim ? h(AnimationCard, { anim: latestAnim }) : null,
+        latestAnim ? h(AnimationCard, { anim: latestAnim, cwd }) : null,
       );
     }
 

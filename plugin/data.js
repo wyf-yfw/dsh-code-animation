@@ -14,6 +14,20 @@ export const STYLES_FILE = fileURLToPath(new URL('./styles.json', HERE));
 export const STILLS_DIR = fileURLToPath(new URL('./stills/', HERE));
 /** Where generated animations are written, one HTML file per creation. */
 export const OUTPUT_DIR = fileURLToPath(new URL('./created/', HERE));
+/** Subdirectory an export is written into, under the session directory. */
+export const EXPORT_DIR_NAME = 'code-animation';
+
+/**
+ * Build marker surfaced by the health route.
+ *
+ * Bump it whenever tool names or their result shape change: a preset mounts this
+ * module once at process start, so a running host can still serve an older revision
+ * than the one on disk, and this is how that shows up.
+ */
+export const BUILD_REV = 4;
+
+/** Tool names this revision registers, in the order they are declared. */
+export const TOOL_NAMES = ['list_styles', 'show_stills', 'get_style', 'save_storyboard', 'save_animation'];
 
 let cached;
 
