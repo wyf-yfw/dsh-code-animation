@@ -107,20 +107,24 @@ export function apply(ctx, config = {}) {
   const withRoutes = config.routes !== false;
 
   if (withTools) {
-    ctx.effect(() => registerCreationTools({
-      tools: ctx.get('tools'),
-      attachments: ctx.get('attachments'),
-    }), 'code-animation-studio:tools');
+    // `ctx.inject` runs the callback once the service is present, and again if it is
+    // replaced. Reading `ctx.get('tools')` directly races plugin activation order and
+    // silently skips registration when the service is not ready yet.
+    ctx.inject(['tools'], (scoped) => {
+      scoped.effect(() => registerCreationTools({
+        tools: scoped.tools,
+        getAttachments: () => scoped.get('attachments'),
+      }), 'code-animation-studio:tools');
+    });
 
     // The staged flow is a policy, so it lives in the prompt rather than in a tool.
-    ctx.effect(() => registerFlowSection(ctx.get('systemPrompt')), 'code-animation-studio:flow');
+    ctx.inject(['systemPrompt'], (scoped) => {
+      scoped.effect(() => registerFlowSection(scoped.systemPrompt), 'code-animation-studio:flow');
+    });
   }
 
   if (withRoutes) {
-    ctx.effect(() => {
-      const webServer = ctx.get('webServer');
-      if (!webServer) return undefined;
-
+    ctx.inject(['webServer'], (scoped) => {
       const handler = async (req, res) => {
         const url = req.url || '';
         try {
@@ -143,7 +147,7 @@ export function apply(ctx, config = {}) {
               return send(res, 400, JSON.stringify({ error: '空文件' }), 'application/json; charset=utf-8');
             }
 
-            const fallbackRoot = ctx.get('workingDirectory')?.defaultDirectory;
+            const fallbackRoot = scoped.get('workingDirectory')?.defaultDirectory;
             const dir = resolveExportDir(query.get('dir'), fallbackRoot);
             const name = safeFileName(query.get('name'), `animation-${Date.now()}.mp4`);
             mkdirSync(dir, { recursive: true });
@@ -159,7 +163,7 @@ export function apply(ctx, config = {}) {
 
           if (url.startsWith(`${PREFIX}/export-dir`) && req.method === 'GET') {
             const query = new URL(url, 'http://localhost').searchParams;
-            const fallbackRoot = ctx.get('workingDirectory')?.defaultDirectory;
+            const fallbackRoot = scoped.get('workingDirectory')?.defaultDirectory;
             return send(res, 200, JSON.stringify({
               dir: resolveExportDir(query.get('dir'), fallbackRoot),
             }), 'application/json; charset=utf-8');
@@ -199,7 +203,8 @@ export function apply(ctx, config = {}) {
         }
       };
 
-      return webServer.register({ kind: 'prefix', path: PREFIX, handler });
-    }, 'code-animation-studio:routes');
+      scoped.effect(() => scoped.webServer.register({ kind: 'prefix', path: PREFIX, handler }),
+        'code-animation-studio:routes');
+    });
   }
 }

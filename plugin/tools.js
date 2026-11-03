@@ -126,8 +126,13 @@ function resolveMusic(requested, style) {
  *   which then fall back to their URLs.
  */
 export function registerCreationTools(deps) {
-  const { tools, attachments } = deps || {};
+  const { tools } = deps || {};
   if (!tools) throw new Error('registerCreationTools needs the tools registry');
+  // A getter is preferred so an attachments service that arrives after activation is
+  // still picked up; a plain object keeps the simple call sites working.
+  const attachmentsOf = typeof deps.getAttachments === 'function'
+    ? deps.getAttachments
+    : () => deps.attachments;
   const disposers = [];
 
   disposers.push(tools.register({
@@ -238,6 +243,7 @@ export function registerCreationTools(deps) {
         if (!style.still) { missing.push(`${style.id} ${style.name}`); continue; }
 
         let attachment;
+        const attachments = attachmentsOf();
         if (attachments) {
           try {
             const data = readFileSync(join(STILLS_DIR, `${style.id}.jpg`));
