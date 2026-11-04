@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>卡点两档对比</title>
+<style>
+ body{background:#111318;color:#e6e8ee;font:15px/1.7 "PingFang SC","Microsoft YaHei",sans-serif;margin:0;padding:32px}
+ h1{font-size:20px;margin:0 0 6px}
+ h2{font-size:14px;color:#9aa3b8;margin:32px 0 4px;font-weight:600;border-bottom:1px solid #2a2e39;padding-bottom:8px}
+ p.sub{color:#8b93a7;margin:0 0 20px;font-size:13px;max-width:800px}
+ .row{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:center;
+   padding:14px 0;border-top:1px solid #23262f}
+ .name{font-weight:600}
+ .desc{color:#8b93a7;font-size:12.5px;margin-top:4px}
+ audio{width:100%;height:36px}
+ .hint{margin-top:24px;padding:13px 15px;background:#171b23;border-left:3px solid #ff8a3d;
+   color:#b8bfcd;font-size:13px;max-width:800px;line-height:1.85}
+ b{color:#fff}
+</style></head><body>
+<h1>卡点两档：普通 vs 高潮</h1>
+<p class="sub">同样的铺底、同样的重音、同样的 2.0 / 3.5 / 5.0 / 6.5 秒。只改 power 一个值，
+引擎就会走不同的处理。听的重点是<b>律动有没有被打断</b>。</p>
+
+<h2>第一组：四拍全是普通卡点（power 0.45）</h2>
+<div class="row">
+  <div><div class="name">E · 普通卡点</div>
+  <div class="desc">重音前后铺底轻微下压，十六分律动一直不停。这是「音乐里该有的重拍」。</div></div>
+  <audio controls preload="auto" src="e-ordinary.wav"></audio>
+</div>
+
+<h2>第二组：四拍全是高潮卡点（power 0.95）</h2>
+<div class="row">
+  <div><div class="name">F · 高潮卡点</div>
+  <div class="desc">铺底在每一下之前 200–320ms 渐出到近乎无声，重音落下后回升。四拍都这样会显得疲劳。</div></div>
+  <audio controls preload="auto" src="f-climax.wav"></audio>
+</div>
+
+<h2>第三组：真实用法 —— 三个普通 + 一个高潮</h2>
+<div class="row">
+  <div><div class="name">G · 混合</div>
+  <div class="desc">1.5 / 3.0 / 4.5 秒是普通卡点，6.0 秒是全片唯一的高潮。高潮只有一次才有效。</div></div>
+  <audio controls preload="auto" src="g-mixed.wav"></audio>
+</div>
+
+<div class="hint">
+先听 E，注意十六分律动从头到尾没有断。<br>
+再听 F，每一下之前铺底都会退开——这就是高潮档。<br>
+最后听 G，1.5 / 3.0 / 4.5 三下应该像「音乐里的重拍」，6.0 那一下才像「全片最重的一击」。<br>
+如果渐出的长度或深浅要调，直接说「渐出再长一点」或「留白再多一点」。
+</div>
+</body></html>

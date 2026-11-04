@@ -771,14 +771,105 @@ async function audioFileToBuffer(file, duration, sampleRate) {
     }
 
     /**
+     * Shape the arrangement around each beat, at one of two strengths.
+     *
+     * There are two different jobs here, and treating them the same makes one of them
+     * wrong:
+     *
+     *   ordinary beat (power < 0.72)
+     *     The rhythm should keep running; the beat just needs to be clearly audible on
+     *     top of it. So the arrangement is not interrupted — it gets a small dip right
+     *     under the transient, which clears space without breaking the groove. Cutting
+     *     the bed here would read as a mistake, because a normal accent is supposed to
+     *     land *inside* the音乐, not punctuate it.
+     *
+     *   climax beat (power >= 0.72)
+     *     This is the one the audience is meant to feel, so the arrangement stops: a
+     *     hard cut to near-silence ~90-130ms before, the hit lands in the hole, then the
+     *     bed returns slightly hot. Silence to full level is the largest contrast there
+     *     is, and it is reserved for peaks so it does not become fatiguing.
+     *
+     * Buses handed to the score:
+     *   `bed`  - the arrangement; this is what gets shaped
+     *   `dest` - the hits; never shaped, so they are what the gap exposes
+     *
+     * @returns `{ total, climax }` counts after shaping.
+     */
+    const CLIMAX_POWER = 0.72;
+
+    function shapeBeats(bedGain, beats, duration) {
+      const marks = (Array.isArray(beats) ? beats : [])
+        .map((b) => ({
+          time: Number(typeof b === 'number' ? b : b && b.time),
+          power: Math.max(0.1, Math.min(1, Number(b && b.power) || 0.8)),
+        }))
+        .filter((b) => Number.isFinite(b.time) && b.time > 0.06 && b.time < duration - 0.02)
+        .sort((a, b) => a.time - b.time);
+
+      if (!marks.length) return { total: 0, climax: 0 };
+
+      const g = bedGain.gain;
+      g.setValueAtTime(1, 0);
+
+      let climax = 0;
+      for (const mark of marks) {
+        const t = mark.time;
+
+        if (mark.power >= CLIMAX_POWER) {
+          // Climax: let the music fall away, then land the hit in the quiet.
+          //
+          // A hard cut would read as a dropout — the ear hears a broken tape, not a
+          // build. So the arrangement fades out over a longer lead (~260ms at full
+          // power) and reaches near-silence only right at the beat. What the listener
+          // perceives is the music stepping back to make room, then the hit.
+          climax++;
+          const fade = 0.20 + mark.power * 0.12;
+          const gapStart = Math.max(0, t - fade);
+          const restoreAt = Math.min(duration, t + 0.045);
+
+          g.setValueAtTime(1, gapStart);
+          // Exponential-shaped fall: quick early, slow into the floor, so it feels like
+          // a release rather than a switch.
+          g.linearRampToValueAtTime(0.62, gapStart + fade * 0.42);
+          g.linearRampToValueAtTime(0.22, gapStart + fade * 0.74);
+          g.linearRampToValueAtTime(0.05, t - 0.006);
+          g.setValueAtTime(0.05, restoreAt);
+          // Return gently and slightly hot, so the beat reads as an arrival.
+          g.linearRampToValueAtTime(1.05, Math.min(duration, restoreAt + 0.14));
+          g.linearRampToValueAtTime(1, Math.min(duration, restoreAt + 0.32));
+        } else {
+          // Ordinary: keep the groove, just clear a little room under the hit.
+          // Depth scales with power so a 0.3 beat barely moves and a 0.7 one is firm.
+          // The dip is a rounded shape, not a step: stepping a gain in a few ms clicks.
+          const dip = 0.46 - mark.power * 0.30;      // 0.37 at 0.3, 0.25 at 0.7
+          const from = Math.max(0, t - 0.075);
+          const hold = Math.min(duration, t + 0.028);
+
+          g.setValueAtTime(1, from);
+          g.linearRampToValueAtTime(0.78, t - 0.028);
+          g.linearRampToValueAtTime(dip, t - 0.004);
+          g.setValueAtTime(dip, hold);
+          g.linearRampToValueAtTime(1.02, Math.min(duration, hold + 0.07));
+          g.linearRampToValueAtTime(1, Math.min(duration, hold + 0.18));
+        }
+      }
+
+      return { total: marks.length, climax };
+    }
+
+    /**
      * Render a score the model wrote for this clip.
      *
      * The code runs against an OfflineAudioContext with the same helpers the built-in
      * engine uses, so a model-written score can do anything the engine can — it just is
      * not limited to the engine's instrument set.
      *
+     * Two buses are handed in: `bed` is where the arrangement should go, and `dest` is
+     * the raw output. Anything connected to `bed` is ducked around each beat; anything
+     * connected to `dest` is not, which is where the hits belong.
+     *
      * @param url - `/code-animation-api/score/<id>`.
-     * @param options - `{ duration, cuts, cues }`.
+     * @param options - `{ duration, cuts, cues, beats }`.
      * @returns the rendered AudioBuffer, or null when the code is missing or throws.
      */
     async function renderModelScore(url, options) {
@@ -789,11 +880,18 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const sampleRate = 44100;
       const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
 
-      // A master gain the model connects into, so we can always find an output even if
-      // it forgets to connect to `dest`.
+      // Raw output: anything the model connects here is heard as-is, so hits belong here.
       const out = ctx.createGain();
       out.gain.value = 1;
       out.connect(ctx.destination);
+
+      // The bed bus: the arrangement goes here and is shaped around each beat — a small
+      // dip under ordinary accents, a full stop before a climax. Hits belong on `dest`
+      // so they are what the gap exposes.
+      const bed = ctx.createGain();
+      bed.gain.value = 1;
+      bed.connect(ctx.destination);
+      const shaped = shapeBeats(bed, options.beats, duration);
 
       const rand = (() => {
         let a = 20261103;
@@ -811,10 +909,12 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         // code, so the score can land on the picture without guessing.
         // eslint-disable-next-line no-new-func
         const fn = new Function(
-          'ctx', 'dest', 'duration', 'cuts', 'cues', 'beats', 'rand', 'hz', source,
+          'ctx', 'dest', 'bed', 'duration', 'cuts', 'cues', 'beats', 'rand', 'hz', source,
         );
-        fn(ctx, out, duration, options.cuts || [], options.cues || [], options.beats || [], rand, hz);
+        fn(ctx, out, bed, duration, options.cuts || [], options.cues || [], options.beats || [], rand, hz);
         const buffer = await ctx.startRendering();
+        buffer.__shapedBeats = shaped.total;
+        buffer.__climaxBeats = shaped.climax;
         let peak = 0;
         for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
           const data = buffer.getChannelData(ch);

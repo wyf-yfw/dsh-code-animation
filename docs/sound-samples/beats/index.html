@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>卡点对比</title>
+<style>
+ body{background:#111318;color:#e6e8ee;font:15px/1.7 "PingFang SC","Microsoft YaHei",sans-serif;margin:0;padding:32px}
+ h1{font-size:20px;margin:0 0 6px}
+ p.sub{color:#8b93a7;margin:0 0 24px;font-size:13px;max-width:780px}
+ .row{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:center;
+   padding:16px 0;border-top:1px solid #23262f}
+ .name{font-weight:600}
+ .desc{color:#8b93a7;font-size:12.5px;margin-top:4px}
+ audio{width:100%;height:36px}
+ .hint{margin-top:24px;padding:13px 15px;background:#171b23;border-left:3px solid #ff8a3d;
+   color:#b8bfcd;font-size:13px;max-width:780px;line-height:1.85}
+ b{color:#fff}
+</style></head><body>
+<h1>卡点强弱的四种做法</h1>
+<p class="sub">四段用的是同一段铺底、同一组重击、同样的 1.5 / 3.0 / 4.5 秒三个卡点。
+四段都做了峰值归一化，响度一致。所以「卡点明不明显」的差别只来自做法本身。</p>
+
+<div class="row">
+  <div><div class="name">A · 平铺直叙</div>
+  <div class="desc">铺底一直在响，重击只加了一点点。最容易出问题的版本。</div></div>
+  <audio controls preload="auto" src="a-plain.wav"></audio>
+</div>
+
+<div class="row">
+  <div><div class="name">B · 把重击拧大声</div>
+  <div class="desc">重击音量翻倍，另加吊镲。铺底完全没动。</div></div>
+  <audio controls preload="auto" src="b-louder.wav"></audio>
+</div>
+
+<div class="row">
+  <div><div class="name">C · 卡点前留出静默缺口</div>
+  <div class="desc">卡点前 90 毫秒铺底切到几乎无声，重击落进这个空档，之后铺底回来。</div></div>
+  <audio controls preload="auto" src="c-gap.wav"></audio>
+</div>
+
+<div class="row">
+  <div><div class="name">D · 缺口 + 进拍扫频 + 尾音</div>
+  <div class="desc">在 C 的基础上，缺口里加一段上扬扫频，重击带吊镲尾音。</div></div>
+  <audio controls preload="auto" src="d-full.wav"></audio>
+</div>
+
+<div class="hint">
+按 A → B → C → D 的顺序听。<br>
+重点对比 <b>B 和 C</b>：两段重击都很大声，但 C 应该更容易听出卡点落在哪一刻。<br>
+如果 C 也不对，告诉我差在哪：缺口太长或太短、重击音色不够炸、
+或者你想要的其实是整体律动更强而不只是孤立的重击。
+</div>
+</body></html>
