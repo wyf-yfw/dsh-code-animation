@@ -161,6 +161,38 @@ const SCALES = {
   phrygian: [0, 1, 3, 5, 7, 8, 10],
 };
 
+/**
+ * Bar patterns, sixteen steps each: one character per sixteenth note.
+ *
+ * `K`/`k` kick (accent/soft), `X` kick and snare together, `S` snare,
+ * `H`/`h` hat (accent/soft), `o` open hat, `.` silence.
+ *
+ * `four` is four-on-the-floor (a kick on every beat), `backbeat` is kick on 1 and 3
+ * with the snare on 2 and 4, `sparse` leaves air for an arrival. Each family holds
+ * several variants because repeating one bar verbatim is what made every score read
+ * as the same loop; consecutive bars rotate through them.
+ */
+const GROOVE_PATTERNS = {
+  four: [
+    'K.h.X.h.K.h.X.h.',
+    'K.hhX.hhK.hhX.hh',
+    'K.h.X.h.K.h.X.oH',
+    'K.h.X.hhK.h.X.hh',
+  ],
+  backbeat: [
+    'K.h.S.h.K.h.S.h.',
+    'K..hS..hK..hS..h',
+    'K.hhS.hhK.hhS.hh',
+    'K.h.S.h.K.h.S.oH',
+  ],
+  sparse: [
+    'K.......o.......',
+    'K.....k.o.......',
+    'K.......h...S...',
+    'K...k...o...S...',
+  ],
+};
+
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -379,7 +411,9 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
   const fade = ctx.createGain();
   fade.gain.setValueAtTime(0.0001, 0);
   fade.gain.linearRampToValueAtTime(1, Math.min(0.15, duration * 0.04));
-  fade.gain.setValueAtTime(1, Math.max(0.15, duration - 0.45));
+  // This only removes the tail click. The ending itself is a cadence written by the
+  // arrangement below, so the last chord rings instead of being faded out mid-loop.
+  fade.gain.setValueAtTime(1, Math.max(0.15, duration - 0.06));
   fade.gain.linearRampToValueAtTime(0.0001, duration);
   fade.connect(master);
 
@@ -602,47 +636,80 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     bed.gain.linearRampToValueAtTime(1, Math.min(duration, cue.time + 0.2));
   }
 
-  // ---- arrangement: bars of real groove ----
-  const totalBars = Math.ceil(duration / bar);
+  // ---- arrangement: bars of real groove, with a lead-in and a written ending ----
+  //
+  // The clip is not "N copies of one bar". A three-part shape is imposed instead:
+  // the first bar thins out as a lead-in, the middle bars rotate through the pattern
+  // variants so no two consecutive bars are identical, and the last bar stops the
+  // groove and resolves on the tonic. Previously every bar repeated one hardcoded
+  // pattern and the piece simply faded, which read as the same loop cut off.
+  const totalBars = Math.max(1, Math.ceil(duration / bar));
   const cueTimes = new Set(cues.map((c) => c.time.toFixed(2)));
   const isCueAt = (t) => cueTimes.has(t.toFixed(2));
+
+  const variants = GROOVE_PATTERNS[spec.groove] || GROOVE_PATTERNS.backbeat;
+  const endingBar = totalBars - 1;
+  const endingT = endingBar * bar;
+  // Only spend a bar on a lead-in when the clip is long enough to afford one.
+  const hasIntro = totalBars >= 3;
+  const tonic = spec.root + (scale[spec.chords[0] % scale.length] || 0);
 
   for (let b = 0; b < totalBars; b++) {
     const barT = b * bar;
     if (barT >= duration) break;
-    const chordIdx = spec.chords[b % spec.chords.length];
-    const rootNote = spec.root + (scale[chordIdx % scale.length] || 0);
+    const isEnding = b === endingBar;
+    const isIntro = hasIntro && b === 0;
     const barLen = Math.min(bar, duration - barT);
     const stepDur = bar / 16;
+    const chordIdx = spec.chords[b % spec.chords.length];
+    const rootNote = spec.root + (scale[chordIdx % scale.length] || 0);
 
-    // A final bar usually gets cut short; only start a pad the bar can hold.
-    if (barLen > beat * 1.2) playPad(rootNote, barT, barLen, 0.16);
-    playBass(rootNote - 12, barT, Math.min(beat * 1.8, barLen), 0.9);
+    if (isEnding) {
+      // Hold the tonic under the cadence for as long as the clip still has room.
+      const ring = Math.max(0.4, duration - barT);
+      playPad(tonic, barT, ring, 0.2);
+      playBass(tonic - 12, barT, ring, 0.95);
+    } else {
+      // A final bar usually gets cut short; only start a pad the bar can hold.
+      if (barLen > beat * 1.2) playPad(rootNote, barT, barLen, isIntro ? 0.12 : 0.16);
+      playBass(rootNote - 12, barT, Math.min(beat * 1.8, barLen), isIntro ? 0.7 : 0.9);
+    }
 
+    const pattern = variants[b % variants.length];
     for (let s = 0; s < 16; s++) {
       const t = barT + s * stepDur;
       if (t >= duration - 0.02) break;
       if (isCueAt(t)) continue; // the impact covers this step
 
-      const isDownbeat = s === 0;
-      const onBeat = s % 4 === 0;
-
-      if (spec.groove === 'four') {
-        if (onBeat) playKick(t, isDownbeat ? 1 : 0.8, bed);
-        if (s === 4 || s === 12) playSnare(t, 0.85, bed);
-        if (s % 2 === 0) playHat(t, s % 4 === 2 ? 0.9 : 0.55, bed, s === 14);
-      } else if (spec.groove === 'backbeat') {
-        if (s === 0 || s === 6 || s === 10) playKick(t, isDownbeat ? 1 : 0.75, bed);
-        if (s === 4 || s === 12) playSnare(t, 0.9, bed);
-        if (s % 2 === 0) playHat(t, s % 4 === 2 ? 0.85 : 0.5, bed, s === 14);
-      } else {
-        // sparse: leave air around the arrival
-        if (s === 0 || s === 8) playKick(t, 0.7, bed);
-        if (s === 8) playHat(t, 0.4, bed, true);
+      if (isEnding) {
+        // One downbeat, then silence so the resolution is heard rather than filled.
+        if (s === 0) playKick(t, 1, bed);
+        continue;
+      }
+      if (isIntro) {
+        // Thin lead-in: a soft pulse and one open hat, no full groove yet.
+        if (s === 0) playKick(t, 0.55, bed);
+        if (s === 8) playHat(t, 0.3, bed, true);
+        continue;
       }
 
-      // Melodic movement, thinned out so it does not fight the groove.
-      if (s === 0 || s === 6 || s === 10) {
+      const mark = pattern[s] || '.';
+      if (mark === 'K') playKick(t, 1, bed);
+      else if (mark === 'k') playKick(t, 0.7, bed);
+      else if (mark === 'X') { playKick(t, 1, bed); playSnare(t, 0.8, bed); }
+      else if (mark === 'S') playSnare(t, 0.88, bed);
+      else if (mark === 'H') playHat(t, 0.7, bed, false);
+      else if (mark === 'h') playHat(t, 0.45, bed, false);
+      else if (mark === 'o') playHat(t, 0.6, bed, true);
+    }
+
+    // Melodic movement, rotated per bar so the phrase does not repeat verbatim.
+    if (!isEnding) {
+      const steps = isIntro ? [0] : [0, 6 + (b % 2) * 2, 10];
+      for (const s of steps) {
+        const t = barT + s * stepDur;
+        if (t >= duration - 0.05) continue;
+        if (isCueAt(t)) continue;
         const degree = scale[Math.floor(rng() * scale.length)];
         const octave = rng() > 0.45 ? 12 : 0;
         playPluck(rootNote + degree + octave, t, 0.13 + rng() * 0.05, spec.pluckDecay);
@@ -650,7 +717,8 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     }
 
     // Fill into the next cut when one lands on this bar's end.
-    const nextCut = cues.find((c) => c.time > barT + bar * 0.6 && c.time < barT + bar + 0.02);
+    const nextCut = isEnding ? undefined
+      : cues.find((c) => c.time > barT + bar * 0.6 && c.time < barT + bar + 0.02);
     if (nextCut && beat > 0.12) {
       const fillStart = nextCut.time - beat * 0.5;
       for (let k = 0; k < 3; k++) {
@@ -668,9 +736,29 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     playImpact(cue.time, cue.power * spec.impact, rootNote);
   }
 
+  // ---- the ending: a real cadence on the tonic, not a cut ----
+  //
+  // A tonic triad that rings to the last sample, plus one impact as the final button.
+  // This is what makes a five-second clip feel finished instead of looped-and-stopped.
+  if (endingT < duration - 0.05) {
+    const ring = duration - endingT;
+    // Keep the cadence out of any sidechain dip that lands on the same downbeat.
+    bed.gain.setValueAtTime(1, endingT);
+    for (const degree of [0, 2, 4]) {
+      const tone = tonic + (scale[degree % scale.length] || 0);
+      playPluck(tone + 12, endingT, 0.1, Math.min(ring, 1.5));
+      playPluck(tone, endingT + 0.012, 0.08, Math.min(ring, 1.5));
+    }
+    playPluck(tonic + 24, endingT, 0.07, Math.min(ring, 1.2));
+    if (!isCueAt(endingT)) playImpact(endingT, 0.7 * spec.impact, tonic);
+  }
+
   const buffer = await ctx.startRendering();
   // Report the tempo actually used, so a caller can log why the cuts fit.
-  buffer.__groove = { bpm, bar, fit: Number(fit.toFixed(3)), cues: cues.length };
+  buffer.__groove = {
+    bpm, bar, fit: Number(fit.toFixed(3)), cues: cues.length,
+    bars: totalBars, groove: spec.groove, variants: variants.length,
+  };
   return buffer;
 }
 
