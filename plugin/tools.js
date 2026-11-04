@@ -261,6 +261,7 @@ export function registerCreationTools(deps) {
         properties: {
           shown: { type: 'array', items: { type: 'object', additionalProperties: true } },
           missing: { type: 'array', items: { type: 'string' } },
+          unpublished: { type: 'array', items: { type: 'string' } },
           note: { type: 'string' },
         },
         required: ['shown', 'missing'],
@@ -363,6 +364,13 @@ export function registerCreationTools(deps) {
           stillUrl: { type: 'string', description: '参考静帧地址；没有静帧时是空字符串。' },
           series: { type: 'string' },
           seriesName: { type: 'string' },
+          // describe() 还会返回这些字段；漏声明会让模型看不到它们（如 promptChars）
+          category: { type: 'string' },
+          fit: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          hasStill: { type: 'boolean' },
+          promptChars: { type: 'integer' },
+          music: { type: 'string', description: '该风格默认的配乐预设。' },
         },
         required: ['id', 'name', 'prompt'],
         additionalProperties: true,
