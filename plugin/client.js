@@ -795,9 +795,13 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 
       try {
+        // `beats` carries the exact moments the model exported from its own animation
+        // code, so the score can land on the picture without guessing.
         // eslint-disable-next-line no-new-func
-        const fn = new Function('ctx', 'dest', 'duration', 'cuts', 'cues', 'rand', 'hz', source);
-        fn(ctx, out, duration, options.cuts || [], options.cues || [], rand, hz);
+        const fn = new Function(
+          'ctx', 'dest', 'duration', 'cuts', 'cues', 'beats', 'rand', 'hz', source,
+        );
+        fn(ctx, out, duration, options.cuts || [], options.cues || [], options.beats || [], rand, hz);
         const buffer = await ctx.startRendering();
         let peak = 0;
         for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
@@ -903,13 +907,28 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         analyser.fftSize = 2048;
         source.connect(analyser);
         tracks.push(...destination.stream.getAudioTracks());
+
+        // Bring the context up BEFORE the recorder exists. Doing this after start()
+        // leaves the recorder capturing silence while the picture already runs, which
+        // truncates the score (measured: a 3.000s clip came out as 2.640s) and shifts
+        // every later beat.
+        if (audioCtx.state === 'suspended') {
+          await Promise.race([
+            audioCtx.resume().catch(() => {}),
+            new Promise((r) => setTimeout(r, 800)),
+          ]);
+        }
+        if (audioCtx.state !== 'running' && opts.onStage) {
+          opts.onStage('音频未能启动，本段可能无声');
+        }
       }
 
       const recorder = new MediaRecorder(new MediaStream(tracks), { mimeType: mime, videoBitsPerSecond: 16000000 });
       const parts = [];
       recorder.ondataavailable = (e) => { if (e.data && e.data.size) parts.push(e.data); };
       const finished = new Promise((resolve) => {
-        recorder.onstop = () => resolve(new Blob(parts, { type: 'video/webm' }));
+        // Resolve with the container that was actually negotiated, not a hardcoded one.
+        recorder.onstop = () => resolve(new Blob(parts, { type: mime }));
       });
       recorder.start();
 
@@ -919,18 +938,9 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const t0 = performance.now();
       let audioPeak = 0;
 
-      if (source) {
-        // A suspended context yields no audio, and without an output device resume()
-        // can hang forever — wait briefly, then record anyway rather than stall.
-        if (audioCtx.state === 'suspended') {
-          await Promise.race([
-            audioCtx.resume().catch(() => {}),
-            new Promise((r) => setTimeout(r, 400)),
-          ]);
-        }
-        if (audioCtx.state !== 'running' && opts.onStage) opts.onStage('音频未启动，本段可能是无声的');
-        source.start(0);
-      }
+      // Start the score with no await in between: the recorder and the first frame must
+      // share one origin, or the whole track lands late.
+      if (source) source.start(0);
 
       try {
         for (let i = 0; i < total; i++) {
@@ -1091,6 +1101,8 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       );
       // In-shot visual peaks the score must hit as well as the cuts.
       const cues = useMemo(() => (Array.isArray(anim.cues) ? anim.cues : []), [anim.cues]);
+      // Beats are exported from the animation code, so they are the exact sync points.
+      const beats = useMemo(() => (Array.isArray(anim.beats) ? anim.beats : []), [anim.beats]);
 
       useEffect(() => () => { if (previewRef.current) previewRef.current.stop(); }, []);
 
@@ -1197,7 +1209,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
 
         const build = hasModelScore
           // Prefer the score the model wrote for this clip; the engine is the fallback.
-          ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues })
+          ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats })
               .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues }))
           : () => renderMusic(music, { duration, cuts, cues });
 
@@ -1205,7 +1217,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           .then((buf) => { if (!cancelled) scoreRef.current = buf; })
           .catch(() => {});
         return () => { cancelled = true; };
-      }, [music, custom, duration, cuts, cues, anim.scoreUrl]);
+      }, [music, custom, duration, cuts, cues, beats, anim.scoreUrl]);
 
       const onPickFile = useCallback(async (event) => {
         const file = event.target.files && event.target.files[0];
@@ -1253,7 +1265,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           let score = scoreRef.current;
           if (!score && !custom && anim.scoreUrl) {
             setStage('正在合成配乐…');
-            score = await renderModelScore(anim.scoreUrl, { duration, cuts, cues }).catch(() => null);
+            score = await renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats }).catch(() => null);
           }
           const { blob, container, hasAudio, audioPeak } = await recordAnimation(frameRef.current, {
             duration,

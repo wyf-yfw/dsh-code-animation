@@ -521,6 +521,29 @@ export function registerCreationTools(deps) {
             additionalProperties: false,
           },
         },
+        beats: {
+          type: 'array',
+          description: [
+            '从你自己写的动画代码里导出的精确节奏点，这是卡点最可靠的来源。',
+            '写动画时你就知道每个元素在第几秒出现、哪一帧爆发，把那些时刻抄到这里。',
+            '每项 { time, type, label, power }：time 是精确秒数（可以带小数，如 2.87）；',
+            'type 是 impact（重击）/ rise（起势）/ drop（下坠）/ hit（轻点）/ swell（渐强）；',
+            'label 写清对应画面里发生了什么，如「故障闪烁峰值」「中文标题砸下」；',
+            'power 是 0–1 的强度。',
+            '这些时间点会传给配乐代码，卡点位置不必再猜。',
+          ].join(''),
+          items: {
+            type: 'object',
+            properties: {
+              time: { type: 'number', description: '精确秒数，可带小数' },
+              type: { type: 'string', description: 'impact / rise / drop / hit / swell' },
+              label: { type: 'string', description: '画面里发生了什么' },
+              power: { type: 'number', description: '强度 0–1，默认 0.8' },
+            },
+            required: ['time'],
+            additionalProperties: false,
+          },
+        },
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
         html: { type: 'string', description: '完整的动画 HTML 文件正文。' },
@@ -529,13 +552,13 @@ export function registerCreationTools(deps) {
           description: [
             '你自己为这个片子写的配乐合成代码（Web Audio）。不要用任何预设音色库。',
             '代码是一个函数体，可用的形参：ctx（OfflineAudioContext）、dest（AudioNode 出口）、',
-            'duration（秒）、cuts（切点秒数数组）、cues（[{time,type,label}] 数组）、',
+            'duration（秒）、cuts（分镜切点秒数数组）、cues（分镜里的镜头重点）、',
+            'beats（你在 beats 参数里给的精确节奏点，每项 {time,type,label,power}）、',
             'rand（可复现随机函数）、hz（MIDI 转频率）。',
             '在里面用 ctx.createOscillator / createBufferSource / createBiquadFilter / createGain 等搭音色，',
-            '把声音接到 dest 上，并在 ctx.currentTime 起算的绝对时间点上 schedule（用 start(t)）。',
+            '把声音接到 dest 上，并在绝对时间点上 schedule（用 start(t)）。',
             '所有节点必须按 duration 收尾，不要在函数里 await。',
-            '写法参考：想要古筝就写带快速衰减的拨弦算法；想要竹笛就写噪声过共振峰；',
-            '想要鼓就写正弦下扫加噪声。完全按这个片子的气质现写，风格没有任何限制。',
+            '卡点用 beats 里的 time：它来自动画代码本身，比 cuts 准。',
             '留空则退回内置合成引擎。',
           ].join(''),
         },
@@ -555,6 +578,7 @@ export function registerCreationTools(deps) {
           music: { type: 'string' },
           cuts: { type: 'array', items: { type: 'number' }, description: '切点秒数，配乐按这些点卡拍。' },
           cues: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '精确卡点列表' },
+          beats: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '从动画代码导出的节奏点' },
           scoreUrl: { type: 'string', description: '模型自写配乐的地址；空串表示使用内置引擎。' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
@@ -638,6 +662,19 @@ export function registerCreationTools(deps) {
 
       const duration = Math.max(1, Math.min(Number(args?.duration) || board?.duration || 8, 120));
       const fps = Math.max(1, Math.min(Number(args?.fps) || board?.fps || 30, 60));
+
+      // Beats come from the animation code the model just wrote, so they are the most
+      // trusted sync points: keep sub-second precision rather than rounding like cues.
+      const beats = (Array.isArray(args?.beats) ? args.beats : [])
+        .map((b) => ({
+          time: Math.round((Number(b.time) || 0) * 1000) / 1000,
+          type: String(b.type || 'hit'),
+          label: String(b.label || ''),
+          power: Number.isFinite(Number(b.power)) ? Math.max(0, Math.min(1, Number(b.power))) : 0.8,
+        }))
+        .filter((b) => b.time > 0.02 && b.time < duration)
+        .sort((a, b) => a.time - b.time);
+
       const id = `anim-${slug(args?.title)}-${Date.now().toString(36)}`;
 
       mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -655,6 +692,12 @@ export function registerCreationTools(deps) {
         }
       }
 
+      // Without beats the score has to infer where the picture peaks, which is exactly
+      // the guessing the beats parameter exists to remove.
+      if (scoreUrl && !beats.length) {
+        warnings.push('配乐没有收到 beats：卡点只能靠 cuts 推，精度会差一些');
+      }
+
       const value = {
         id,
         title: String(args?.title || '动画'),
@@ -663,6 +706,7 @@ export function registerCreationTools(deps) {
         music: scoreUrl ? '模型自写配乐' : music,
         cuts,
         cues,
+        beats,
         scoreUrl,
         duration,
         fps,

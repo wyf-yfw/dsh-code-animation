@@ -76,6 +76,36 @@ export const FLOW_PROMPT = `## 创作流程
 - 页面 HTML 必须显式包含一个 <canvas> 元素，画面全部用 Canvas 2D 或 WebGL 绘制，绝对禁止写纯 DOM/CSS 动效（DOM 元素无法被浏览器 MediaRecorder 捕获导出为视频）。
 - 必须实现 window.renderAt(t) 接口（t 为秒，同一时刻 t 渲染同一帧）。
 
+#### 卡点：先把 beats 导出来，再写配乐
+
+这是整条流程里最要紧的一步。**动画代码是你自己写的，所以每个画面动作发生在第几秒，你本来就知道。**
+不要让它只存在于你的脑子里——写进 save_animation 的 beats 参数。
+
+写动画时，把每一个「画面值得被听见」的时刻记下来：
+
+- 文字出现 / 砸下 / 逐字显完
+- 元素爆开、聚合、断裂
+- 镜头切换、故障闪烁、闪白
+- 数字跳到终点、进度条走满
+- 最重要那一帧的定格
+
+每条给 \`time\`（精确到 0.01 秒，如 2.87 而不是 3）、\`type\`、\`label\`、\`power\`（0–1）。
+
+\`\`\`json
+"beats": [
+  { "time": 0.41, "type": "rise",   "label": "砖墙从暗处浮现", "power": 0.5 },
+  { "time": 1.24, "type": "hit",    "label": "第一个字母通电", "power": 0.7 },
+  { "time": 2.87, "type": "impact", "label": "故障闪烁撕裂",   "power": 1.0 },
+  { "time": 3.72, "type": "impact", "label": "中文标题砸下",   "power": 0.95 },
+  { "time": 4.55, "type": "hit",    "label": "副标题浮现",     "power": 0.6 }
+]
+\`\`\`
+
+**beats 会原样传进 score_js 的 beats 形参，时间误差是 0 毫秒**（已实测）。
+你的配乐只要写 \`for (const b of beats) 打击(b.time, b.power)\` 就是精确卡点，不需要猜。
+
+一次完整动作最好是：**rise 在峰值前 0.3–0.5 秒起势，impact 正好落在峰值上，之后留一点余响。**
+
 #### 配乐：写 score_js，不要依赖内置引擎
 
 save_animation 的 score_js 参数是一段 Web Audio 合成代码，直接决定这条片子听起来是什么声音。
@@ -85,14 +115,16 @@ save_animation 的 score_js 参数是一段 Web Audio 合成代码，直接决�
 - \`ctx\` — OfflineAudioContext
 - \`dest\` — 输出节点，把声音接到这里
 - \`duration\` — 片长（秒）
-- \`cuts\` — 切点秒数数组
-- \`cues\` — \`[{time, type, label}]\`
+- \`beats\` — 你刚导出的精确节奏点，\`[{time, type, label, power}]\`，**卡点用这个**
+- \`cuts\` — 分镜切点秒数数组（比 beats 粗，只在没有 beats 时用）
+- \`cues\` — 分镜里的镜头重点
 - \`rand()\` — 可复现随机
 - \`hz(midi)\` — MIDI 转频率
 
 写法要点：
 - 用 ctx.createOscillator / createBufferSource / createBiquadFilter / createGain / createConvolver / createWaveShaper 现场搭音色。
-- **每一个 cuts 和 cues 时间点都要有明确的声音事件**，直接用 start(t) 落在那个秒数上。这是卡点的全部意义。
+- **每一个 beats 时间点都必须有明确的声音事件**，直接用 start(b.time) 落在那个秒数上。这是卡点的全部意义。
+- 重击之前让铺底让位（那 0.1 秒内把伴奏增益压到 0.2 左右），重击才听得出来。
 - 背景铺底要比卡点轻很多（大约 1/10），否则重击会被淹掉。
 - 所有节点必须在 duration 内收尾，函数里不要 await。
 
