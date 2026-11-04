@@ -61,6 +61,18 @@ window.__ModuleLoader__.load({
 .cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;max-height:520px}
 .cas-frame{display:block;width:100%;height:100%;border:0;background:#05070b}
 .cas-bar{display:flex;align-items:center;gap:9px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1)}
+/* two-track timeline: picture marks on top, real waveform below */
+.cas-tracks{border-top:1px solid var(--dsw-alias-border-l1);background:#080a0e;user-select:none}
+.cas-track{position:relative;height:22px;cursor:crosshair}
+.cas-track-video{background:#10141c;border-bottom:1px solid #171c26}
+.cas-track-audio{height:58px}
+.cas-track-label{position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:10px;
+  color:#5a6478;pointer-events:none;letter-spacing:.5px}
+.cas-track-note{position:absolute;left:40px;top:50%;transform:translateY(-50%);font-size:10px;
+  color:#3d4757;pointer-events:none}
+.cas-cut{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#3fd7c0;
+  box-shadow:0 0 6px #3fd7c088}
+.cas-wave{display:block;width:100%;height:58px}
 .cas-play-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);
   background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);display:inline-flex;
   align-items:center;justify-content:center;cursor:pointer;font-size:12px;padding:0;flex-shrink:0;user-select:none}
@@ -972,7 +984,141 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       return { blob, container, hasAudio: tracks.length > 1, audioPeak };
     }
 
-    /** Reference stills the Agent showed for the user to pick a style from. */
+    /**
+     * Two stacked tracks for the finished clip.
+     *
+     * The picture track marks the storyboard cuts; the sound track draws the score's real
+     * waveform and marks every beat the animation code reported. Seeing where an accent
+     * sits against the picture is the only way to diagnose a sync problem by eye, so the
+     * waveform is drawn from the rendered buffer rather than a decorative placeholder.
+     */
+    function Timeline({ duration, scrub, beats, cuts, cues, score, fps, onSeek }) {
+      const canvasRef = useRef(null);
+
+      // Redraw whenever the buffer or the marks change.
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return undefined;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const width = canvas.clientWidth || 600;
+        const height = 56;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        const g = canvas.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, width, height);
+
+        const lane = (top, h, fill) => {
+          g.fillStyle = fill;
+          g.fillRect(0, top, width, h);
+        };
+        lane(0, height, '#0b0d12');
+
+        const xOf = (t) => (Math.max(0, Math.min(duration, t)) / duration) * width;
+
+        if (score && typeof score.getChannelData === 'function') {
+          // Peak envelope per pixel column: the honest shape of what will be heard.
+          const data = score.getChannelData(0);
+          const mid = height / 2;
+          g.strokeStyle = '#3fb6f0';
+          g.lineWidth = 1;
+          g.beginPath();
+          for (let x = 0; x < width; x++) {
+            const from = Math.floor((x / width) * data.length);
+            const to = Math.floor(((x + 1) / width) * data.length);
+            let peak = 0;
+            for (let i = from; i < to; i += 2) {
+              const v = Math.abs(data[i]);
+              if (v > peak) peak = v;
+            }
+            const half = Math.min(mid - 2, peak * mid * 1.6);
+            g.moveTo(x + 0.5, mid - half);
+            g.lineTo(x + 0.5, mid + half);
+          }
+          g.stroke();
+        } else {
+          g.fillStyle = '#1a1f2b';
+          g.fillRect(0, height / 2 - 1, width, 2);
+        }
+
+        // Beat markers: the moments the animation code said matter.
+        for (const b of beats) {
+          const x = xOf(b.time);
+          const power = Number.isFinite(b.power) ? b.power : 0.8;
+          g.strokeStyle = `rgba(255,138,61,${0.45 + power * 0.55})`;
+          g.lineWidth = 1 + power * 1.2;
+          g.beginPath();
+          g.moveTo(x, 0);
+          g.lineTo(x, height);
+          g.stroke();
+          g.fillStyle = `rgba(255,138,61,${0.6 + power * 0.4})`;
+          g.beginPath();
+          g.arc(x, 3, 2 + power * 1.6, 0, Math.PI * 2);
+          g.fill();
+        }
+
+        // Cue markers that were not already covered by a beat.
+        for (const c of cues) {
+          const near = beats.some((b) => Math.abs(b.time - c.time) < 0.05);
+          if (near) continue;
+          const x = xOf(c.time);
+          g.strokeStyle = 'rgba(255,192,77,0.55)';
+          g.lineWidth = 1;
+          g.setLineDash([2, 3]);
+          g.beginPath();
+          g.moveTo(x, 0);
+          g.lineTo(x, height);
+          g.stroke();
+          g.setLineDash([]);
+        }
+
+        // Playhead.
+        const px = xOf(scrub);
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(px, 0);
+        g.lineTo(px, height);
+        g.stroke();
+
+        return undefined;
+      }, [duration, scrub, beats, cues, score]);
+
+      /** Click or drag anywhere on the track to scrub there. */
+      const seek = (event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        onSeek(ratio * duration);
+      };
+
+      return h('div', { className: 'cas-tracks' },
+        // Picture track: storyboard cuts.
+        h('div', {
+          className: 'cas-track cas-track-video',
+          onMouseDown: seek,
+          title: '视频轨：竖线是分镜切点',
+        },
+          cuts.map((t) => h('span', {
+            key: `c${t}`,
+            className: 'cas-cut',
+            style: { left: `${(t / duration) * 100}%` },
+          })),
+          cuts.length
+            ? null
+            : h('span', { className: 'cas-track-note' }, '无分镜切点'),
+          h('span', { className: 'cas-track-label' }, '视频'),
+        ),
+        // Sound track: real waveform plus every reported beat.
+        h('div', {
+          className: 'cas-track cas-track-audio',
+          onMouseDown: seek,
+          title: '音频轨：波形是实际配乐，橙色竖线是卡点',
+        },
+          h('canvas', { ref: canvasRef, className: 'cas-wave' }),
+          h('span', { className: 'cas-track-label' }, '音频'),
+        ),
+      );
+    }
     function StillGallery({ stills, note, missing }) {
       const [lightbox, setLightbox] = useState('');
       return h('div', { className: 'cas-card' },
@@ -1067,6 +1213,8 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       const [customDir, setCustomDir] = useState('');
       const [aspect, setAspect] = useState('16:9');
       const [playing, setPlaying] = useState(false);
+      // The rendered score, exposed to the timeline so it can draw the real waveform.
+      const [scoreBuffer, setScoreBuffer] = useState(null);
       const animFrameRef = useRef(null);
       const scrubRef = useRef(0);
       scrubRef.current = scrub;
@@ -1214,10 +1362,21 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           : () => renderMusic(music, { duration, cuts, cues });
 
         build()
-          .then((buf) => { if (!cancelled) scoreRef.current = buf; })
+          .then((buf) => {
+            if (cancelled) return;
+            scoreRef.current = buf;
+            // Hand the buffer to the timeline so it can draw the true waveform.
+            setScoreBuffer(buf || null);
+          })
           .catch(() => {});
         return () => { cancelled = true; };
       }, [music, custom, duration, cuts, cues, beats, anim.scoreUrl]);
+
+      // The first build effect resets the buffer; keep the timeline in step with it.
+      useEffect(() => {
+        if (custom) setScoreBuffer(custom);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [custom]);
 
       const onPickFile = useCallback(async (event) => {
         const file = event.target.files && event.target.files[0];
@@ -1330,7 +1489,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
               anim.styleId ? `${anim.styleId} ${anim.styleName || ''}`.trim() : '',
               `${duration}s`,
               `${fps}fps`,
-              cuts.length ? `卡点 ${cuts.length} 处` : '',
+              beats.length ? `${beats.length} 个卡点` : (cuts.length ? `${cuts.length} 个切点` : ''),
             ].filter(Boolean).join(' · ')),
           h('span', { className: 'cas-grow' }),
           h('button', {
@@ -1361,6 +1520,16 @@ async function audioFileToBuffer(file, duration, sampleRate) {
             },
           }),
         ),
+        h(Timeline, {
+          duration,
+          scrub,
+          beats,
+          cuts,
+          cues,
+          score: scoreBuffer,
+          fps,
+          onSeek: (t) => { stopPlayback(); applyScrub(t); },
+        }),
         h('div', { className: 'cas-bar' },
           h('button', {
             className: 'cas-play-btn',
