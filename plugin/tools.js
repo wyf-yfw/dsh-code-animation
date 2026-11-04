@@ -8,7 +8,7 @@
  * No second model call happens here: the Agent that already holds the user's
  * context is the one that authors the animation.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { OUTPUT_DIR, MUSIC_PRESETS, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
@@ -187,7 +187,7 @@ export function registerCreationTools(deps) {
   disposers.push(tools.register({
     name: 'list_styles',
     description: [
-      '在 341 种代码动画风格里检索。用户说出气质、题材或编号时先调用它。',
+      `在 ${catalog().styles.length} 种代码动画风格里检索。用户说出气质、题材或编号时先调用它。`,
       '返回每条风格的编号、名称、系列、适用题材、是否有参考静帧，以及完整风格提示词。',
       '检索结果只是候选清单：挑出 2–3 条之后，必须再用 show_stills 把画面给用户看。',
       '选择规则：用户给了编号就精确匹配；只描述气质时挑 2–3 条最匹配的说明理由。',
@@ -196,7 +196,10 @@ export function registerCreationTools(deps) {
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: '关键词、风格名或编号，如「水墨」「B3」「赛博」；留空则按系列浏览。' },
+        query: {
+          type: 'string',
+          description: '自然语言描述或编号。可以整句照搬用户说法（「赛博朋克霓虹街景」「像素小游戏开场」），会按词分别匹配并按命中词数排序；也可以直接给编号（「B3」「B3 A1」），此时只在编号里查。留空则按目录顺序浏览。',
+        },
         series: {
           type: 'string',
           description: '限定系列：AG（代码样片）、M（动态风格）、K（卡通画风）、Z（中国风）、H（现成版式）、L（Lemo-Opuscar）、V（mg-styles-15）、X（code-video）、R（照参考学来的）、O（奥斯卡 98 部）。',
@@ -271,6 +274,9 @@ export function registerCreationTools(deps) {
           lines.push(`${item.id} ${item.name}｜${item.description}`);
           if (item.attachment) blocks.push({ type: 'image', attachment: item.attachment });
         }
+        if (value.unpublished && value.unpublished.length) {
+          lines.push(`参考图还没上架：${value.unpublished.join('、')}（暂时不能用，等补图后再选）`);
+        }
         if (value.missing.length) {
           lines.push(`没有参考静帧：${value.missing.join('、')}（这几条请用文字描述画面）`);
         }
@@ -279,6 +285,9 @@ export function registerCreationTools(deps) {
       presentationMeta: (_args, value) => ({
         shown: value.shown.map(({ attachment, ...rest }) => rest),
         missing: value.missing,
+        unpublished: value.unpublished,
+        // The inline Tool view renders the reason the Agent gave for these candidates.
+        note: value.note,
       }),
     },
     async execute(args) {
@@ -286,10 +295,19 @@ export function registerCreationTools(deps) {
       if (!ids.length) throw new Error('ids 不能为空');
       const shown = [];
       const missing = [];
+      // A style that exists but has no published still is reported apart from an id
+      // that does not exist at all: the first is "not ready yet", the other is a typo.
+      const unpublished = [];
 
       for (const raw of ids) {
+        const key = String(raw).trim().toUpperCase();
         const style = styleById(raw);
-        if (!style) { missing.push(String(raw)); continue; }
+        if (!style) {
+          const known = styleById(key) || catalog().styles.find((s) => s.id === key);
+          if (!known && existsSync(join(STILLS_DIR, `${key}.jpg`))) unpublished.push(key);
+          else missing.push(String(raw));
+          continue;
+        }
         if (!style.still) { missing.push(`${style.id} ${style.name}`); continue; }
 
         let attachment;
@@ -316,8 +334,12 @@ export function registerCreationTools(deps) {
         });
       }
 
-      if (!shown.length) throw new Error(`这些编号没有可展示的静帧：${missing.join('、')}`);
-      return { shown, missing, note: String(args?.note || '') };
+      if (!shown.length) {
+        throw new Error(unpublished.length
+          ? `这些风格的参考图还没上架：${unpublished.join('、')}，暂时不能选；请从有图的风格里挑。`
+          : `这些编号没有可展示的静帧：${missing.join('、')}`);
+      }
+      return { shown, missing, unpublished, note: String(args?.note || '') };
     },
   }));
 

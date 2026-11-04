@@ -11,6 +11,8 @@ window.__ModuleLoader__.load({
 
     const CSS = `
 .cas-tail{margin:8px 0 2px;display:flex;flex-direction:column;gap:8px}
+/* Inline Tool view: the card sits inside the Tool row, which is already indented. */
+.cas-inline{margin:6px 0 2px}
 .cas-card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;overflow:hidden;
   background:var(--dsw-alias-bg-layer-1);font:13px/1.5 system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
   color:var(--dsw-alias-label-primary)}
@@ -1738,21 +1740,16 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         : undefined;
       if (!data) return null;
 
-      const hasAnything = (data.stills && data.stills.items.length)
-        || data.storyboards.length
-        || data.animations.length;
-      if (!hasAnything) return null;
-
-      const latestBoard = data.storyboards[data.storyboards.length - 1];
+      // The reference stills and the storyboard draft render in their own Tool rows
+      // (see ShowStillsRow and StoryboardRow), which exist as soon as each result
+      // lands. Repeating them here would show the same card twice once the Turn ends,
+      // so this Turn-level seat only carries what has no Tool row of its own.
       const latestAnim = data.animations[data.animations.length - 1];
+      if (!latestAnim) return null;
 
       return h('div', { className: 'cas-tail' },
         h('style', null, CSS),
-        data.stills && data.stills.items.length
-          ? h(StillGallery, { stills: data.stills.items, note: data.stills.note, missing: data.stills.missing })
-          : null,
-        latestBoard ? h(StoryboardCard, { board: latestBoard }) : null,
-        latestAnim ? h(AnimationCard, { anim: latestAnim, cwd, uiWorkspace: props.uiWorkspace }) : null,
+        h(AnimationCard, { anim: latestAnim, cwd, uiWorkspace: props.uiWorkspace }),
       );
     }
 
@@ -1908,6 +1905,77 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       },
     };
 
+    /**
+     * Rebuild a storyboard card model from the Tool result's structured `meta`.
+     *
+     * The Host echoes the validated draft as `meta`, so this path uses the stored
+     * fields instead of re-parsing the rendered prose the way the Turn fold does.
+     */
+    function boardFromMeta(meta) {
+      if (!meta || !Array.isArray(meta.shots)) return null;
+      const shots = meta.shots;
+      return {
+        id: String(meta.id || ''),
+        title: String(meta.title || ''),
+        styleId: String(meta.styleId || ''),
+        styleName: String(meta.styleName || ''),
+        duration: Number(meta.duration) || 0,
+        aspect: String(meta.aspect || ''),
+        music: String(meta.music || ''),
+        cuts: shots
+          .map((s) => Number(s.start))
+          .filter((t) => Number.isFinite(t) && t > 0.05)
+          .sort((a, b) => a - b),
+        shots: shots.map((s, i) => ({
+          index: Number(s.index) || i + 1,
+          start: Number(s.start) || 0,
+          end: Number(s.end) || 0,
+          scene: String(s.scene || ''),
+          text: String(s.text || ''),
+          camera: String(s.camera || ''),
+        })),
+        warnings: Array.isArray(meta.warnings) ? meta.warnings : [],
+      };
+    }
+
+    /**
+     * Inline Tool views for the two cards the flow depends on.
+     *
+     * The Turn-level `turnTail` only publishes on `turn/end`, so during the Turn —
+     * exactly when the user is being asked to choose a style or approve a draft —
+     * those cards are not mounted yet. These views render the same content in the
+     * Tool row that produced it, which exists as soon as its result lands.
+     */
+    function ShowStillsRow(props) {
+      const { block } = props || {};
+      const meta = block && block.meta;
+      const shown = meta && Array.isArray(meta.shown) ? meta.shown : null;
+      if (!shown || !shown.length) return null;
+      return h('div', { className: 'cas-tail cas-inline' },
+        h('style', null, CSS),
+        h(StillGallery, {
+          // The Host names the field `description`; the gallery renders `desc`.
+          stills: shown.map((item) => ({
+            id: String(item.id || ''),
+            name: String(item.name || ''),
+            desc: String(item.description || ''),
+          })),
+          note: String(meta.note || ''),
+          missing: Array.isArray(meta.missing) ? meta.missing : [],
+        }),
+      );
+    }
+
+    function StoryboardRow(props) {
+      const { block } = props || {};
+      const board = boardFromMeta(block && block.meta);
+      if (!board) return null;
+      return h('div', { className: 'cas-tail cas-inline' },
+        h('style', null, CSS),
+        h(StoryboardCard, { board }),
+      );
+    }
+
     return {
       inject: ['slots', 'uiConversation'],
       apply(ctx) {
@@ -1919,6 +1987,18 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           order: 30,
           label: '代码动画',
         }, (props) => h(CreationTail, { ...props, uiWorkspace: ctx.get('uiWorkspace') })));
+
+        // One view per producing Tool, keyed by the wire Tool name.
+        ctx.slots.inject('tool.call.toolview', function* () {
+          yield ctx.slots.register({
+            name: 'tool.call.toolview',
+            key: 'show_stills',
+          }, ShowStillsRow);
+          yield ctx.slots.register({
+            name: 'tool.call.toolview',
+            key: 'save_storyboard',
+          }, StoryboardRow);
+        });
       },
     };
   },

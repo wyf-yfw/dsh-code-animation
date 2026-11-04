@@ -14,7 +14,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFil
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BUILD_REV, EXPORT_DIR_NAME, OUTPUT_DIR, STILLS_DIR, TOOL_NAMES, catalog } from './data.js';
+import { BUILD_REV, EXPORT_DIR_NAME, OUTPUT_DIR, STILLS_DIR, TOOL_NAMES, catalog, isApproved } from './data.js';
 import { registerFlowSection } from './flow.js';
 import { registerCreationTools } from './tools.js';
 
@@ -193,7 +193,9 @@ export function apply(ctx, config = {}) {
 
           if (url.startsWith(`${PREFIX}/still/`)) {
             const id = safeId(url.slice(`${PREFIX}/still/`.length));
-            const file = id ? join(STILLS_DIR, `${id}.jpg`) : '';
+            // Unpublished stills keep their file but are not served: a style the user
+            // has not cleared must not leak through a hand-typed URL either.
+            const file = id && isApproved({ id }) ? join(STILLS_DIR, `${id}.jpg`) : '';
             if (!file || !existsSync(file)) return send(res, 404, 'not found');
             const buf = readFileSync(file);
             res.writeHead(200, {
