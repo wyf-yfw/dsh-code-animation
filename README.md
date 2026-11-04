@@ -4,13 +4,13 @@
 
 # 代码动画工作台
 
-341 种代码动画风格提示词，接入 DeepSeek Harness 对话框。
+193 种代码动画风格提示词，接入 DeepSeek Harness 对话框。
 
 [![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-code-animation?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-code-animation/stargazers)
 [![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
-[![styles](https://img.shields.io/badge/styles-341-e0457b?style=flat-square)](#风格库)
-[![stills](https://img.shields.io/badge/stills-341-7b5bff?style=flat-square)](#风格库)
+[![styles](https://img.shields.io/badge/styles-193-e0457b?style=flat-square)](#风格库)
+[![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
 
 [![tools](https://img.shields.io/badge/tools-5-ff9a4d?style=flat-square)](#工具参考)
 [![export](https://img.shields.io/badge/export-MP4%20H.264%2BAAC-3fd7c0?style=flat-square)](#导出)
@@ -27,8 +27,9 @@
 ## 概述
 
 本项目把 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)
-的 341 种风格提示词与 341 张参考静帧（100% 覆盖）封装成 DeepSeek Harness 的一个 Agent 模式。
-在该模式下，Agent 通过五个工具检索风格、提交分镜、产出动画，成品以卡片形式出现在对话末尾，
+的 341 种风格提示词封装成 DeepSeek Harness 的一个 Agent 模式。风格只有配上合格的
+参考静帧才会开放，当前 **193 种已上架**，其余 148 种等补图后逐个上架（见[风格库](#风格库)）。
+在该模式下，Agent 通过五个工具检索风格、提交分镜、产出动画，成品以卡片形式出现在对话中，
 可直接预览与导出。
 
 动画由对话中的 Agent 直接编写为 HTML + Canvas，不经过第二次模型调用。
@@ -83,22 +84,26 @@ sequenceDiagram
 <img src="docs/mode-picker.png" alt="模式选择器中的创作模式" width="82%">
 </div>
 
-参考静帧、分镜草稿与动画预览渲染于 `conversation.chat.turnTail`，即回合末尾、
-可折叠工具组之外，因此不会随工具组折叠而隐藏：
+参考静帧与分镜草稿渲染在**产生它们的那条工具行里**，随结果落地即可见；动画预览渲染于
+`conversation.chat.turnTail`（回合末尾）。因此用户在回合进行中被要求选风格或拍板分镜时，
+就已经能看到画面，不必等回合结束：
 
 ```
 ✓ 已处理 6 步                                    可折叠的工具调用日志
-你的片子做好了，B3 粒子聚形，8 秒。
-
+show_stills                                       ← 静帧就在这里，展开前也可见
 ┌─────────────────────────────────────────┐
-│ ● 风格候选            3 条参考静帧        │     回合级卡片
-│ [静帧] [静帧] [静帧]                      │     始终展开
-├─────────────────────────────────────────┤
+│ ● 风格候选            3 条参考静帧        │
+│ [静帧] [静帧] [静帧]                      │
+└─────────────────────────────────────────┘
+save_storyboard
+┌─────────────────────────────────────────┐
 │ ● 分镜 · 首屏加速        3 场 · 8s · 9:16 │
 │ ▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░           │
 │ 1  0.00–2.40s  粒子崩塌成数字…            │
-├─────────────────────────────────────────┤
-│ ● 首屏加速         B3 粒子聚形  8s 30fps  │
+└─────────────────────────────────────────┘
+你的片子做好了，B3 粒子聚形，8 秒。
+┌─────────────────────────────────────────┐
+│ ● 首屏加速         B3 粒子聚形  8s 30fps  │     回合末尾卡片
 │ [ 动画预览 ]              [ 导出视频 ]    │
 │ 配乐 [脉冲 ▾]  格式 [MP4 ▾]      [试听]   │
 └─────────────────────────────────────────┘
@@ -158,7 +163,7 @@ dsh plugin install ./dsh-code-animation/preset     # 声明「创作模式」
 
 | 工具 | 阶段 | 作用 |
 |---|---|---|
-| `list_styles` | 2 | 检索 341 条风格，返回编号、名称、系列、适用题材、有无静帧、完整提示词 |
+| `list_styles` | 2 | 检索已上架风格（当前 193 条），返回编号、名称、系列、适用题材、有无静帧、完整提示词 |
 | `show_stills` | 2 | 将参考静帧作为图片写入对话，供风格判断 |
 | `get_style` | 3 之后 | 读取单条风格的完整视觉规范 |
 | `save_storyboard` | 4 | 提交分镜草稿并校验结构，渲染为时间轴与逐场清单 |
@@ -237,19 +242,44 @@ dsh plugin install ./dsh-code-animation/preset     # 声明「创作模式」
 
 <div align="center">
 
-| 系列 | 名称 | 数量 | | 系列 | 名称 | 数量 |
+| 系列 | 名称 | 已上架/总数 | | 系列 | 名称 | 已上架/总数 |
 |:---:|---|:---:|---|:---:|---|:---:|
-| **AG** | A–G 代码样片 | 26 | | **L** | Lemo-Opuscar | 59 |
-| **M** | 动态风格 | 40 | | **V** | mg-styles-15 | 15 |
-| **K** | 卡通画风 | 38 | | **X** | code-video | 31 |
-| **Z** | 中国风 | 15 | | **R** | 照参考学来的 | 7 |
-| **H** | 现成版式 | 12 | | **O** | 奥斯卡 98 部 | 98 |
+| **AG** | A–G 代码样片 | 26 / 26 | | **L** | Lemo-Opuscar | 59 / 59 |
+| **O** | 奥斯卡 98 部 | 98 / 98 | | **R** | 照参考学来的 | 7 / 7 |
+| **M** | 动态风格 | 1 / 40 | | **Z** | 中国风 | 1 / 15 |
+| **H** | 现成版式 | 1 / 12 | | **K** | 卡通画风 | 0 / 38 |
+| **V** | mg-styles-15 | 0 / 15 | | **X** | code-video | 0 / 31 |
 
-合计 341 条，全量具备参考静帧（覆盖率 100%）。
+合计 **193 条已上架**。库中 341 条，其余 148 条尚未开放：这些风格缺合格参考静帧，
+在补图之前既不出现在检索结果里，也不能被选中（详见下节）。
 
 </div>
 
 选风格时，主画风、运动方式与版式各取一条，不叠加多条风格的完整约束。
+
+### 上架白名单
+
+风格是否开放由 `plugin/stills/approved.json` 决定，而不是文件是否存在：
+
+```json
+{
+  "note": "上架白名单：只有列在这里的风格才会出现在检索结果里。",
+  "approved": ["A1", "A2", "B3", "..."]
+}
+```
+
+只有列进 `approved` 的风格才会进入目录。约束覆盖全部出口，因此不存在绕过路径：
+
+| 出口 | 未上架时的行为 |
+|---|---|
+| `list_styles` | 不返回，工具描述里的数量也按当前上架数生成 |
+| `get_style` | 视为不存在的编号，改为提示相近编号 |
+| `show_stills` | 报「参考图还没上架」，与「编号写错」区分 |
+| `/code-animation-api/still/<id>` | 返回 404，手输 URL 也拿不到 |
+
+**补图流程**：把合格的静帧放到 `plugin/stills/<编号>.jpg`，再把编号追加进
+`approved` 数组即可上架；文件不必删除或改名。`stills/index.json` 是上游原始清单，
+仅供对照。
 
 ---
 
@@ -489,15 +519,20 @@ code-animation-studio (@local/dsh-code-animation):
 ### 卡片渲染位置
 
 ```
-conversation.chat.node（工具组，可折叠）
-  └─ tool.call.toolview     调用日志
+conversation.chat.node（工具组）
+  └─ tool.call.toolview     工具行；show_stills / save_storyboard 的卡片挂在这里
+                            （回合进行中即渲染，随结果落地可见）
 
 conversation.chat.turnTail（回合末尾，始终展开）
-  └─ code-animation-studio  参考静帧 / 分镜 / 预览
+  └─ code-animation-studio  动画预览（回合结束后才发布）
 ```
+
+卡片位置是实测出来的：`turnTail` 只在 `turn/end` 发布，而用户是在回合**进行中**
+被要求选风格、拍板分镜的，那时它还没渲染，所以静帧与分镜改挂在产生它们的工具行上。
 
 数据来自 `uiConversation.events.register()` 注册的回合级投影：将每个回合中
 `show_stills`、`save_storyboard`、`save_animation` 的落盘参数与结果文本折叠为一份回合数据。
+工具行卡片则直接读工具结果的 `meta`（Host 回传的结构化草稿），不再正则解析文本。
 数据源为会话日志而非插件内存，因此刷新页面与重放历史会话均可还原。
 
 ### 目录
@@ -512,8 +547,8 @@ dsh-code-animation/
 │   ├── client.js            # 浏览器端：回合末尾卡片（含配乐引擎）
 │   ├── src/ui.js            # client.js 的可读源码
 │   ├── src/music.js         # 程序化配乐：八个预设、卡点拟合、离线渲染
-│   ├── styles.json          # 341 条风格，含完整提示词
-│   ├── stills/              # 193 张参考静帧，按风格编号命名
+│   ├── styles.json          # 341 条风格提示词（其中 193 条已上架）
+│   ├── stills/              # 参考静帧；approved.json 是上架白名单，index.json 是上游清单
 │   └── cordis.patch.yml     # 顶层行：仅开启路由
 ├── preset/                  # @local/dsh-code-animation-preset
 │   └── cordis.patch.yml     # 声明「创作模式」
@@ -570,10 +605,10 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
 ```json
 {
   "ok": true,
-  "rev": 4,
+  "rev": 6,
   "tools": ["list_styles", "show_stills", "get_style", "save_storyboard", "save_animation"],
-  "styles": 341,
-  "stills": 341
+  "styles": 193,
+  "stills": 193
 }
 ```
 
@@ -582,6 +617,7 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
 | 缺少 `rev` / `tools` | 加载的是 rev 3 之前的版本，需要重启 |
 | `rev` 低于仓库中的 `BUILD_REV` | 加载的是旧版本，需要重启 |
 | `tools` 少于五项 | 同上 |
+| `styles` / `stills` 与上架数不符 | 白名单未生效，检查 `stills/approved.json` |
 
 `BUILD_REV` 定义在 `plugin/data.js`，工具名或结果结构变化时应递增。
 
@@ -607,7 +643,8 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
 | 部分 | 许可 |
 |---|---|
 | 插件代码（`index.js`、`tools.js`、`data.js`、`flow.js`、`client.js`、`src/`） | MIT |
-| 341 条提示词与原始参考静帧 | 基础库来自 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)，遵循其 `LICENSE.md` 与 `references/attribution.md` |
+| 341 条风格提示词 | 基础库来自 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)，遵循其 `LICENSE.md` 与 `references/attribution.md` |
+| 参考静帧 | 上游原始静帧（193 张，即当前上架部分）遵循同一许可 |
 | 其中 L / V / X 系列 | 分别来自 Lemo-Opuscar、mg-styles-15、code-video，第三方许可见原仓库 `assets/library/第三方许可/` |
 
 再分发时请保留上述署名与第三方许可。素材版权归原作者。
