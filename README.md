@@ -6,7 +6,7 @@
 
 193 种代码动画风格提示词，接入 DeepSeek Harness 对话框。
 
-[![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-code-animation?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-code-animation/stargazers)
+[![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-creation-mode?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-creation-mode/stargazers)
 [![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
 [![styles](https://img.shields.io/badge/styles-193-e0457b?style=flat-square)](#风格库)
@@ -116,14 +116,14 @@ save_storyboard
 要求 dsh `0.2.1` 及以上。
 
 ```bash
-git clone https://github.com/wyf-yfw/dsh-code-animation.git
+git clone https://github.com/wyf-yfw/dsh-creation-mode.git
 ```
 
 安装两个 bundle。二者缺一不可：
 
 ```bash
-dsh plugin install ./dsh-code-animation/plugin     # 风格库、工具、卡片
-dsh plugin install ./dsh-code-animation/preset     # 声明「创作模式」
+dsh plugin install ./dsh-creation-mode/plugin     # 风格库、工具、卡片
+dsh plugin install ./dsh-creation-mode/preset     # 声明「创作模式」
 ```
 
 安装后新建会话，在模式选择器中选择「创作模式」。
@@ -543,7 +543,7 @@ conversation.chat.turnTail（回合末尾，始终展开）
 ### 目录
 
 ```
-dsh-code-animation/
+dsh-creation-mode/
 ├── plugin/                  # @local/dsh-code-animation
 │   ├── index.js             # Host：路由与挂载；按 config 决定装载哪一半
 │   ├── flow.js              # 六步流程与门禁的系统提示段落
