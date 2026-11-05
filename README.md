@@ -171,6 +171,32 @@ dsh plugin --profile web add @deepseek-ai/dsh-experimental-plugin-market-bundle
 
 之后在设置里把上面的索引地址加进去，插件页就能搜到「创作模式」。
 
+### 更新到新版本
+
+DSH 的插件管理器对**第三方插件**不提供「更新」按钮：`installBundle` 遇到已安装的包会直接拒绝
+（`already-installed`）。只有官方按需插件会在版本与 DSH 不同时显示 Update，其余一律要先卸载再装。
+
+**用户侧**
+
+```bash
+dsh plugin --profile web remove dsh-creation-mode
+dsh plugin --profile web add dsh-creation-mode
+```
+
+装完**重启 `dsh web`**。插件模块在进程启动时导入一次并留在 ESM 缓存中，不重启会继续跑旧版本
+（见[故障排查](#规则更新插件后必须重启-dsh)）。已存在的会话保留创建时的版本，验证新版请新建会话。
+
+**维护者侧**
+
+```bash
+cd plugin
+npm version patch        # 或 minor / major
+npm publish
+```
+
+再把 `market.json` 的 `versions` 与 `publishTimestamp` 改成新版本并推送。Discover 索引读的就是
+这份文件，不改的话插件页仍显示旧版本号。
+
 ---
 
 ## 使用
