@@ -57,10 +57,14 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}
 
 /* animation player */
-.cas-stage{position:relative;background:#05070b;display:flex;align-items:center;justify-content:center}
-.cas-stage[data-aspect="16:9"]{aspect-ratio:16/9;max-height:560px}
-.cas-stage[data-aspect="9:16"]{height:520px}
-.cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;max-height:520px}
+/* Each shape derives its width from the ratio and the height cap, then lets
+   aspect-ratio compute the height. Sizing by max-height alone (or by height alone)
+   left the box at the card's full width, and the canvas inside — which fills its
+   frame at 100%/100% — was stretched to that wrong shape. */
+.cas-stage{position:relative;background:#05070b;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.cas-stage[data-aspect="16:9"]{aspect-ratio:16/9;width:min(100%,calc(560px * 16 / 9))}
+.cas-stage[data-aspect="9:16"]{aspect-ratio:9/16;width:min(100%,calc(520px * 9 / 16))}
+.cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;width:min(100%,520px)}
 .cas-frame{display:block;width:100%;height:100%;border:0;background:#05070b}
 .cas-bar{display:flex;align-items:center;gap:9px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1)}
 /* two-track timeline: picture marks on top, real waveform below */
@@ -361,6 +365,24 @@ window.__ModuleLoader__.load({
       ].filter(Boolean).join(''));
     }
 
+    /**
+     * Stable per-clip seed for the score engine.
+     *
+     * `renderMusic` falls back to one hardcoded seed, so before this every clip in
+     * every style drew the identical random sequence — the same melodic contours,
+     * the same noise and reverb buffers. Hashing the clip id keeps one clip's score
+     * reproducible while letting different clips differ.
+     */
+    function seedOf(text) {
+      let h = 2166136261;
+      const s = String(text || 'clip');
+      for (let i = 0; i < s.length; i += 1) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0) || 1;
+    }
+
     async function recordAnimation(iframe, opts) {
       const win = iframe && iframe.contentWindow;
       if (!win) throw new Error('预览还没准备好');
@@ -391,7 +413,7 @@ window.__ModuleLoader__.load({
           if (opts.onStage) opts.onStage('正在合成配乐…');
           audioBuffer = await renderMusic(opts.music, {
             duration: opts.duration,
-            seed: opts.musicSeed,
+            seed: opts.musicSeed ?? seedOf(opts.clipId),
             cuts: opts.cuts,
             cues: opts.cues,
           });
@@ -845,8 +867,8 @@ window.__ModuleLoader__.load({
         const build = hasModelScore
           // Prefer the score the model wrote for this clip; the engine is the fallback.
           ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats })
-              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues }))
-          : () => renderMusic(music, { duration, cuts, cues });
+              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues, seed: seedOf(anim.id) }))
+          : () => renderMusic(music, { duration, cuts, cues, seed: seedOf(anim.id) });
 
         build()
           .then((buf) => {
@@ -921,6 +943,7 @@ window.__ModuleLoader__.load({
             music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
             scoreBuffer: score || undefined,
+            clipId: anim.id,
             onStage: setStage,
             onProgress: setProgress,
           });

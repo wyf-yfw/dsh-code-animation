@@ -5,6 +5,9 @@ plugin/api.log
 # Local README render used to check how GitHub parses the markup.
 docs/readme-preview.html
 
+# Rendered 5s clips used to A/B the score presets by ear.
+music-samples/
+
 # Tooling
 node_modules/
 .DS_Store

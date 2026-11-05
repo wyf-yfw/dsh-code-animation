@@ -57,10 +57,14 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}
 
 /* animation player */
-.cas-stage{position:relative;background:#05070b;display:flex;align-items:center;justify-content:center}
-.cas-stage[data-aspect="16:9"]{aspect-ratio:16/9;max-height:560px}
-.cas-stage[data-aspect="9:16"]{height:520px}
-.cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;max-height:520px}
+/* Each shape derives its width from the ratio and the height cap, then lets
+   aspect-ratio compute the height. Sizing by max-height alone (or by height alone)
+   left the box at the card's full width, and the canvas inside — which fills its
+   frame at 100%/100% — was stretched to that wrong shape. */
+.cas-stage{position:relative;background:#05070b;display:flex;align-items:center;justify-content:center;margin:0 auto}
+.cas-stage[data-aspect="16:9"]{aspect-ratio:16/9;width:min(100%,calc(560px * 16 / 9))}
+.cas-stage[data-aspect="9:16"]{aspect-ratio:9/16;width:min(100%,calc(520px * 9 / 16))}
+.cas-stage[data-aspect="1:1"]{aspect-ratio:1/1;width:min(100%,520px)}
 .cas-frame{display:block;width:100%;height:100%;border:0;background:#05070b}
 .cas-bar{display:flex;align-items:center;gap:9px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1)}
 /* two-track timeline: picture marks on top, real waveform below */
@@ -148,6 +152,7 @@ const MUSIC_PRESETS = [
   { id: 'synth', label: '赛博未来科技' },
   { id: 'pulse', label: '快节奏动感脉冲' },
   { id: 'bright', label: '活泼轻快灵动' },
+  { id: 'chiptune', label: '8-bit 芯片音乐' },
   { id: 'ambient', label: '沉浸深邃氛围' },
   { id: 'none', label: '无配乐' },
 ];
@@ -192,6 +197,201 @@ const GROOVE_PATTERNS = {
     'K...k...o...S...',
   ],
 };
+
+/**
+ * One instrument set per mood.
+ *
+ * Every preset used to share a single electronic kit — the same sine kick, the same
+ * noise snare, the same saw pluck — so changing mood moved only the scale, tempo and
+ * reverb and every score still sounded like the same track. These sets change the
+ * instrument families themselves: a taiko and a plucked zither for 国风, an orchestra
+ * for 史诗, an 808/909 machine for 赛博, a marimba for 轻快, an FM bell for 氛围.
+ *
+ * Voice parameters are read by the primitives below; `null` drops the voice entirely.
+ */
+/**
+ * Instruments, each built by a different synthesis method.
+ *
+ * A parameter sweep over one oscillator cannot make a zither, a flute and a piano —
+ * they differ in *how* they make sound, not in cutoff and decay. Each entry here names
+ * the method its voice uses:
+ *
+ *   pluck  filtered oscillator stack, exponential decay, optional pitch bend
+ *   struck additive partials with hammer noise; higher partials decay faster (piano)
+ *   fm     carrier ring-modulated by a ratio (marimba, bell, e-piano)
+ *   bowed  detuned saw with bow noise, vibrato and a formant peak (violin, cello, brass)
+ *   wind   sine/triangle with breath noise and vibrato (笛子)
+ *   chip   unfiltered pulse wave by duty cycle (NES/8-bit)
+ */
+const INSTRUMENTS = {
+  // ---- 中国乐器 ----
+  zheng: {
+    synth: 'pluck', wave: 'triangle', attack: 0.0015, c0: 3600, c1: 520, bend: -0.5, decayScale: 0.9,
+    // 古筝的泛音列比钢琴更亮、更不谐和
+    partials: [{ wave: 'sine', octave: 12, gain: 0.40 }, { wave: 'sine', octave: 19, gain: 0.16 }, { wave: 'triangle', octave: 24, gain: 0.08 }],
+  },
+  dizi: {
+    synth: 'wind', wave: 'sine', attack: 0.05, decayScale: 1.7, sustain: true,
+    breath: 0.20, breathF: 2600, air: 0.05, vibrato: 5.6, vibratoDepth: 0.013, c0: 2600, c1: 2000, level: 0.85,
+  },
+  // ---- 西洋乐器 ----
+  piano: {
+    synth: 'struck', attack: 0.003, decayScale: 1.5, hammer: 0.09, hammerF: 3200,
+    // 非谐泛音 + 高次泛音衰减更快：这是钢琴与拨弦最大的区别
+    partials: [
+      { octave: 0, gain: 1 }, { octave: 12, gain: 0.34 }, { octave: 19, gain: 0.20 },
+      { octave: 24, gain: 0.10 }, { octave: 28, gain: 0.05 },
+    ],
+    c0: 2800, c1: 700,
+  },
+  violin: {
+    synth: 'bowed', wave: 'sawtooth', attack: 0.075, decayScale: 1.8, sustain: true,
+    bow: 0.09, bowF: 3000, vibrato: 5.8, vibratoDepth: 0.010, formant: 900, c0: 3200, c1: 2400, level: 0.9,
+  },
+  cello: {
+    synth: 'bowed', wave: 'sawtooth', attack: 0.11, decayScale: 2.0, sustain: true,
+    bow: 0.07, bowF: 1800, vibrato: 4.6, vibratoDepth: 0.008, formant: 520, c0: 1700, c1: 1300, level: 1.0,
+  },
+  brass: {
+    synth: 'bowed', wave: 'sawtooth', attack: 0.055, decayScale: 1.9, sustain: false,
+    bow: 0.02, bowF: 1500, vibrato: 5.2, vibratoDepth: 0.005, formant: 1200, c0: 2200, c1: 900, level: 1.4,
+  },
+  guitar: {
+    synth: 'pluck', wave: 'triangle', attack: 0.004, c0: 2600, c1: 700, decayScale: 1.0,
+    partials: [{ wave: 'sine', octave: 12, gain: 0.30 }, { wave: 'sine', octave: 19, gain: 0.12 }],
+  },
+  // ---- 打击与键盘 ----
+  marimba: { synth: 'fm', ratio: 4, index: 1.6, attack: 0.003, decayScale: 0.8, level: 1.25 },
+  bell: { synth: 'fm', ratio: 3.5, index: 1.4, attack: 0.006, decayScale: 2.6, level: 1.25 },
+  ePiano: { synth: 'fm', ratio: 2, index: 1.1, attack: 0.004, decayScale: 1.6, level: 1.2 },
+  // ---- 电子与 8-bit ----
+  acid: { synth: 'pluck', wave: 'square', attack: 0.002, c0: 4200, c1: 900, decayScale: 0.6, q: 7 },
+  stab: { synth: 'pluck', wave: 'sawtooth', attack: 0.001, c0: 5200, c1: 1400, decayScale: 0.35 },
+  padSynth: { synth: 'pluck', wave: 'sawtooth', attack: 0.01, c0: 2000, c1: 800, decayScale: 1.2 },
+  chipPulse: { synth: 'chip', duty: 0.25, attack: 0.001, decayScale: 0.55 },
+  chipSquare: { synth: 'chip', duty: 0.5, attack: 0.001, decayScale: 0.65 },
+  chipTri: { synth: 'chipTri', attack: 0.002, decayScale: 0.8 },
+};
+
+/**
+ * One kit per mood: which instruments play, plus the drum design.
+ *
+ * `lead` is the melody line; `answer` is an optional second instrument that takes
+ * every other melodic step, which is what turns a single line into an exchange
+ * (古筝 问答 笛子) instead of the same timbre repeating.
+ */
+const KITS = {
+  guofeng: {
+    trim: 1.997, // 响度校准
+    // 太鼓：鼓皮噪声为主
+    kick: { f0: 96, f1: 52, sweep: 0.12, dur: 0.55, peak: 0.34, tone: 0.55, thump: 0.36, thumpDur: 0.10, thumpF0: 1400, thumpF1: 160, thumpType: 'bandpass', thumpQ: 0.8 },
+    // 梆子：极短高 Q 木质
+    snare: { kind: 'wood', type: 'bandpass', f0: 1700, q: 4.5, dur: 0.075, peak: 0.20, attack: 0.0008, body: 430, bodyLevel: 0.10, bodyDur: 0.07 },
+    hat: { type: 'highpass', f0: 4600, dur: 0.05, peak: 0.07, attack: 0.004 },
+    lead: 'zheng',
+    answer: 'dizi',
+    bass: { wave: 'sine', attack: 0.03, sustain: true, release: 0.16, level: 0.30, cutoff: 320 },
+    pad: { voices: [{ wave: 'sine', detune: -5 }, { wave: 'triangle', detune: 5 }], attack: 0.65, sustain: true, release: 0.3, cutoff: 700, level: 0.18 },
+    riser: { type: 'bandpass', f0: 500, f1: 5200, q: 2, peak: 0.24 },
+    impact: { sub0: 92, sub1: 34, subDur: 0.9, crash: 2600, crashQ: 0.6, stab: 'triangle', stabPeak: 0.13 },
+  },
+  epic: {
+    trim: 0.611, // 响度校准
+    kick: { f0: 88, f1: 40, sweep: 0.20, dur: 0.80, peak: 0.44, tone: 0.85, thump: 0.26, thumpDur: 0.12, thumpF0: 1100, thumpF1: 120 },
+    snare: { kind: 'noise', type: 'bandpass', f0: 2100, q: 1.1, dur: 0.19, peak: 0.26, attack: 0.001, body: 185, bodyWave: 'sine', bodyLevel: 0.20, bodyDur: 0.16 },
+    hat: { type: 'highpass', f0: 6600, dur: 0.045, peak: 0.055, attack: 0.004 },
+    // 弦乐群：小提琴 + 大提琴分解，而不是铜管主奏
+    lead: 'violin',
+    answer: 'cello',
+    bass: { voices: [{ wave: 'sawtooth', detune: -7 }, { wave: 'sawtooth', detune: 0 }, { wave: 'sawtooth', detune: 7 }], attack: 0.09, sustain: true, release: 0.2, level: 0.26, cutoff: 900 },
+    pad: { voices: [{ wave: 'sawtooth', detune: -10 }, { wave: 'sawtooth', detune: -3 }, { wave: 'sawtooth', detune: 3 }, { wave: 'sawtooth', detune: 10 }], attack: 0.4, sustain: true, release: 0.3, cutoff: 2100, level: 0.14 },
+    riser: { type: 'bandpass', f0: 300, f1: 4500, q: 1.4, peak: 0.34 },
+    impact: { sub0: 76, sub1: 30, subDur: 1.1, crash: 3000, crashQ: 0.5, stab: 'sawtooth', stabPeak: 0.17 },
+  },
+  synth: {
+    trim: 4.377, // 响度校准
+    kick: { f0: 182, f1: 42, sweep: 0.055, dur: 0.55, peak: 0.60, tone: 1, thump: 0.05, thumpDur: 0.02, thumpF0: 800, thumpF1: 90 },
+    snare: { kind: 'noise', type: 'highpass', f0: 1500, q: 0.8, dur: 0.12, peak: 0.26, attack: 0.0008, body: 225, bodyLevel: 0.14, bodyDur: 0.08 },
+    hat: { type: 'highpass', f0: 9200, dur: 0.03, peak: 0.10, attack: 0.0006 },
+    lead: 'acid',
+    bass: { wave: 'sawtooth', attack: 0.004, sustain: true, release: 0.08, level: 0.30, c0: 260, c1: 420, q: 9, resonant: true },
+    pad: { voices: [{ wave: 'sawtooth', detune: -14 }, { wave: 'sawtooth', detune: 14 }], attack: 0.22, sustain: true, release: 0.25, cutoff: 1150, level: 0.13 },
+    riser: { type: 'bandpass', f0: 600, f1: 7000, q: 4, peak: 0.30 },
+    impact: { sub0: 84, sub1: 26, subDur: 0.95, crash: 4200, crashQ: 0.9, stab: 'square', stabPeak: 0.14 },
+  },
+  chiptune: {
+    trim: 14.917, // 响度校准
+    // NES 没有真正的底鼓：三角波快速下扫当鼓，是芯片音乐的标志手法
+    kick: { f0: 220, f1: 48, sweep: 0.04, dur: 0.16, peak: 0.55, tone: 1, thump: 0.12, thumpDur: 0.015, thumpF0: 1200, thumpF1: 200, thumpType: 'highpass', wave: 'triangle' },
+    // 噪声通道：短促、不做滤波塑形
+    snare: { kind: 'noise', type: 'highpass', f0: 2400, q: 0.6, dur: 0.10, peak: 0.24, attack: 0.0004 },
+    hat: { type: 'highpass', f0: 7000, dur: 0.025, peak: 0.11, attack: 0.0004 },
+    lead: 'chipPulse',
+    answer: 'chipSquare',
+    arpeggio: true,
+    // 三角波贝斯：NES 三个音源之一
+    bass: { wave: 'triangle', attack: 0.002, sustain: true, release: 0.04, level: 0.34, cutoff: 2400 },
+    pad: null,
+    riser: { type: 'highpass', f0: 2000, f1: 8000, q: 1, peak: 0.22 },
+    impact: { sub0: 120, sub1: 40, subDur: 0.4, crash: 5200, crashQ: 1.1, stab: 'square', stabPeak: 0.16 },
+  },
+  pulse: {
+    trim: 6.709, // 响度校准
+    kick: { f0: 205, f1: 52, sweep: 0.05, dur: 0.26, peak: 0.62, tone: 1, thump: 0.09, thumpDur: 0.02, thumpF0: 900, thumpF1: 100 },
+    snare: { kind: 'clap', type: 'bandpass', f0: 1800, q: 1.5, peak: 0.24 },
+    hat: { type: 'highpass', f0: 8600, dur: 0.028, peak: 0.10, attack: 0.0006 },
+    lead: 'stab',
+    answer: 'padSynth',
+    bass: { wave: 'square', attack: 0.004, sustain: true, release: 0.06, level: 0.30, cutoff: 760 },
+    pad: { voices: [{ wave: 'square', detune: -8 }, { wave: 'sawtooth', detune: 8 }], attack: 0.18, sustain: true, release: 0.2, cutoff: 2600, level: 0.09 },
+    riser: { type: 'bandpass', f0: 700, f1: 6500, q: 3, peak: 0.30 },
+    impact: { sub0: 88, sub1: 28, subDur: 0.8, crash: 3800, crashQ: 0.8, stab: 'sawtooth', stabPeak: 0.15 },
+  },
+  bright: {
+    trim: 8.116, // 响度校准
+    kick: { f0: 150, f1: 72, sweep: 0.04, dur: 0.17, peak: 0.26, tone: 0.5, thump: 0.30, thumpDur: 0.04, thumpF0: 1800, thumpF1: 300, thumpType: 'bandpass', thumpQ: 0.9 },
+    snare: { kind: 'wood', type: 'bandpass', f0: 2500, q: 4, dur: 0.055, peak: 0.20, attack: 0.0006, body: 620, bodyLevel: 0.09, bodyDur: 0.05 },
+    hat: { type: 'highpass', f0: 6200, dur: 0.06, peak: 0.085, attack: 0.006 },
+    // 马林巴主奏，钢琴应答
+    lead: 'marimba',
+    answer: 'piano',
+    bass: { wave: 'sine', attack: 0.008, sustain: true, release: 0.08, level: 0.28, cutoff: 500 },
+    pad: { voices: [{ wave: 'triangle', detune: -7 }, { wave: 'sine', detune: 7 }], attack: 0.28, sustain: true, release: 0.2, cutoff: 3200, level: 0.12 },
+    riser: { type: 'bandpass', f0: 900, f1: 6000, q: 2.5, peak: 0.22 },
+    impact: { sub0: 96, sub1: 40, subDur: 0.6, crash: 4600, crashQ: 0.9, stab: 'sine', stabPeak: 0.12 },
+  },
+  ambient: {
+    trim: 1.742, // 响度校准
+    // 完全不敲鼓
+    kick: null,
+    snare: null,
+    hat: null,
+    lead: 'bell',
+    answer: 'ePiano',
+    bass: { wave: 'sine', attack: 0.5, sustain: true, release: 0.5, level: 0.26, cutoff: 240 },
+    pad: { voices: [{ wave: 'sine', detune: -12 }, { wave: 'triangle', detune: -2 }, { wave: 'triangle', detune: 2 }, { wave: 'sine', detune: 12 }], attack: 0.9, sustain: true, release: 0.5, cutoff: 560, level: 0.18 },
+    riser: { type: 'bandpass', f0: 200, f1: 3000, q: 1.2, peak: 0.18 },
+    impact: { sub0: 64, sub1: 26, subDur: 1.6, crash: 1800, crashQ: 0.4, stab: 'sine', stabPeak: 0.10 },
+  },
+  cinematic: {
+    trim: 1.994, // 响度校准
+    kick: { f0: 122, f1: 45, sweep: 0.14, dur: 0.55, peak: 0.42, tone: 0.9, thump: 0.18, thumpDur: 0.07, thumpF0: 1000, thumpF1: 120 },
+    snare: { kind: 'noise', type: 'bandpass', f0: 2000, q: 1.0, dur: 0.15, peak: 0.24, attack: 0.001, body: 200, bodyWave: 'triangle', bodyLevel: 0.15, bodyDur: 0.1 },
+    hat: { type: 'highpass', f0: 6800, dur: 0.04, peak: 0.07, attack: 0.003 },
+    // 钢琴主奏，小提琴应答
+    lead: 'piano',
+    answer: 'violin',
+    bass: { voices: [{ wave: 'triangle', detune: -4 }, { wave: 'sine', detune: 4 }], attack: 0.02, sustain: true, release: 0.12, level: 0.30, cutoff: 600 },
+    pad: { voices: [{ wave: 'sawtooth', detune: -8 }, { wave: 'sawtooth', detune: 0 }, { wave: 'sawtooth', detune: 8 }], attack: 0.5, sustain: true, release: 0.3, cutoff: 1350, level: 0.14 },
+    riser: { type: 'bandpass', f0: 400, f1: 5000, q: 2, peak: 0.28 },
+    impact: { sub0: 80, sub1: 28, subDur: 0.95, crash: 3400, crashQ: 0.7, stab: 'triangle', stabPeak: 0.14 },
+  },
+};
+
+/** Unknown ids (including `auto` and the retired `lofi`) keep a distinct default. */
+function kitFor(mood) {
+  return KITS[mood] || KITS.cinematic;
+}
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -268,6 +468,13 @@ function analyzePrompt(promptOrId) {
       mood: 'pulse', scale: SCALES.dorian, root: 45, bpm: 128,
       chords: [0, 2, 3, 0], wave: 'sawtooth', pluckDecay: 0.25,
       groove: 'four', reverbWet: 0.18, cutoff: 2200, impact: 0.9,
+    };
+  }
+  if (has('8bit', '8-bit', '芯片', '红白机', 'fc', 'nes', 'chiptune', '像素游戏', 'gameboy', 'gb')) {
+    return {
+      mood: 'chiptune', scale: SCALES.major, root: 60, bpm: 150,
+      chords: [0, 4, 5, 3], wave: 'square', pluckDecay: 0.16,
+      groove: 'backbeat', reverbWet: 0.12, cutoff: 6000, impact: 0.7,
     };
   }
   if (has('氛围', '静谧', '空灵', '孤独', 'ambient', 'calm', 'drone', 'space')) {
@@ -347,6 +554,8 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
   const seed = Number(options.seed) || 20261103;
   const rng = mulberry32(seed);
   const spec = analyzePrompt(musicPromptOrPreset);
+  // The instrument set for this mood; every voice below reads from it.
+  const K = kitFor(spec.mood);
 
   // Collect every moment the picture needs an accent on.
   const rawCuts = Array.isArray(options.cuts) ? options.cuts : [];
@@ -397,16 +606,29 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
   ceiling.attack.value = 0.001;
   ceiling.release.value = 0.08;
 
+  // A soft ceiling of last resort. The two compressors above shape the mix, but they
+  // are dynamics processors, not limiters: a bright 8-bit arpeggio at full level can
+  // still overshoot. tanh keeps that from clipping on the way out.
+  const softClip = ctx.createWaveShaper();
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i += 1) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * 1.35);
+  }
+  softClip.curve = curve;
+
   master.connect(glue);
   glue.connect(ceiling);
-  ceiling.connect(ctx.destination);
+  ceiling.connect(softClip);
+  softClip.connect(ctx.destination);
 
   const verb = ctx.createConvolver();
   verb.buffer = createReverbBuffer(ctx, Math.min(2.4, duration * 0.8), 2.2, rng);
   const wet = ctx.createGain();
   wet.gain.value = spec.reverbWet;
   verb.connect(wet);
-  wet.connect(master);
+  // `wet` joins the kit bus below, not `master`: routing the reverb past the trim let
+  // a wet preset (氛围 uses 0.5) ignore its own loudness calibration.
 
   const fade = ctx.createGain();
   fade.gain.setValueAtTime(0.0001, 0);
@@ -417,142 +639,444 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
   fade.gain.linearRampToValueAtTime(0.0001, duration);
   fade.connect(master);
 
+  const { beat, bar, bpm, fit } = fitGroove(rawCuts, duration, spec.bpm);
+
   /**
-   * The bed bus carries the groove. Cue impacts connect past it to `fade`, so when the
-   * bed ducks the hit is exposed rather than masked.
+   * The bed bus carries the groove. Cue impacts connect past it to `kitBus`, so when
+   * the bed ducks the hit is exposed rather than masked.
+   *
+   * `kitBus` is the per-kit trim: instruments differ in loudness by more than 20 dB
+   * (a bowed string ensemble against a bare pulse wave), so each kit carries one
+   * calibration gain instead of every voice guessing its own level.
    */
+  const kitBus = ctx.createGain();
+  kitBus.gain.value = K.trim ?? 1;
+  kitBus.connect(fade);
+  wet.connect(kitBus);
+
   const bed = ctx.createGain();
   bed.gain.value = 1;
-  bed.connect(fade);
+  bed.connect(kitBus);
 
-  const { beat, bar, bpm, fit } = fitGroove(rawCuts, duration, spec.bpm);
   const scale = SCALES[spec.scale] || SCALES.minorPent;
 
   const noiseBuf = createNoiseBuffer(ctx, 1.5, rng);
   const hatsBuf = createNoiseBuffer(ctx, 0.2, rng);
 
   // ---- voices ----------------------------------------------------------------
+  //
+  // Each voice is a thin wrapper over a primitive, and the primitive reads its
+  // parameters from the mood's kit. The call signatures stay as they were, so the
+  // arrangement and ending code above is unchanged.
 
-  const playKick = (t, power, dest) => {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(165, t);
-    osc.frequency.exponentialRampToValueAtTime(45, t + 0.11);
+  /** Filtered noise burst: snare, clap, hat, shaker, woodblock, cymbal. */
+  const noiseBurst = (t, power, dest, k, overrides) => {
+    const cfg = overrides ? { ...k, ...overrides } : k;
+    const src = ctx.createBufferSource();
+    src.buffer = hatsBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = cfg.type || 'bandpass';
+    f.frequency.setValueAtTime(cfg.f0, t);
+    if (cfg.f1) f.frequency.exponentialRampToValueAtTime(cfg.f1, t + cfg.dur);
+    f.Q.value = cfg.q ?? 1;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.5 * power, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    osc.connect(g);
+    const attack = cfg.attack ?? 0.001;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(cfg.peak * power, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + cfg.dur);
+    src.connect(f);
+    f.connect(g);
     g.connect(dest);
-    osc.start(t);
-    osc.stop(t + 0.3);
+    if (cfg.verb) g.connect(verb);
+    src.start(t);
+    src.stop(t + cfg.dur + 0.03);
+  };
+
+  /**
+   * Drum: 808/909 kick, taiko, timpani, tom, or a soft brush thump.
+   *
+   * `tone` and `thump` set the balance between the pitched body and the skin noise.
+   * Every kit used to be a bare sine sweep, which is the single most "electronic"
+   * thing in the score; a frame drum is mostly noise over a short low tone, while an
+   * 808 is almost pure tone.
+   */
+  const playKick = (t, power, dest) => {
+    const k = K.kick;
+    if (!k) return;
+    if (k.tone !== 0) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(k.f0, t);
+      osc.frequency.exponentialRampToValueAtTime(k.f1, t + k.sweep);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(k.peak * (k.tone ?? 1) * power, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + k.dur);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + k.dur + 0.02);
+    }
+    // The skin: noise the pitched body alone cannot give.
+    if (k.thump > 0) {
+      noiseBurst(t, k.thump * power, dest, {
+        type: k.thumpType || 'lowpass',
+        f0: k.thumpF0 ?? 900, f1: k.thumpF1 ?? 110,
+        dur: k.thumpDur || 0.05, q: k.thumpQ ?? 0.7, peak: 1, attack: 0.0005,
+      });
+    }
   };
 
   const playSnare = (t, power, dest) => {
-    const src = ctx.createBufferSource();
-    src.buffer = hatsBuf;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 1900;
-    bp.Q.value = 0.9;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.3 * power, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
-    src.connect(bp);
-    bp.connect(g);
-    g.connect(dest);
-    src.start(t);
-    src.stop(t + 0.16);
-
-    // A body tone under the noise so the snare reads on small speakers too.
-    const body = ctx.createOscillator();
-    body.type = 'triangle';
-    body.frequency.setValueAtTime(210, t);
-    body.frequency.exponentialRampToValueAtTime(150, t + 0.07);
-    const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0.16 * power, t);
-    bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    body.connect(bg);
-    bg.connect(dest);
-    body.start(t);
-    body.stop(t + 0.12);
+    const k = K.snare;
+    if (!k) return;
+    if (k.kind === 'clap') {
+      // A clap is three very short bursts, not one long noise hit.
+      for (let i = 0; i < 3; i++) {
+        noiseBurst(t + i * 0.011, power * (1 - i * 0.16), dest, k, { dur: 0.05 + i * 0.02, attack: 0.0005 });
+      }
+      return;
+    }
+    noiseBurst(t, power, dest, k);
+    if (k.body) {
+      // A body tone under the noise so the hit reads on small speakers too.
+      const body = ctx.createOscillator();
+      body.type = k.bodyWave || 'triangle';
+      body.frequency.setValueAtTime(k.body, t);
+      body.frequency.exponentialRampToValueAtTime(k.body * 0.72, t + 0.07);
+      const bg = ctx.createGain();
+      bg.gain.setValueAtTime(k.bodyLevel * power, t);
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + (k.bodyDur ?? 0.1));
+      body.connect(bg);
+      bg.connect(dest);
+      body.start(t);
+      body.stop(t + (k.bodyDur ?? 0.1) + 0.03);
+    }
   };
 
   const playHat = (t, power, dest, open = false) => {
-    const src = ctx.createBufferSource();
-    src.buffer = hatsBuf;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 7800;
+    const k = K.hat;
+    if (!k) return;
+    noiseBurst(t, power, dest, k, open ? { dur: Math.max(k.dur, 0.16) } : undefined);
+  };
+
+  /**
+   * General tonal voice: bass, pad, strings, brass.
+   *
+   * One oscillator per entry in `voices`, so a preset can stack detuned layers for a
+   * string ensemble instead of the single sine every preset used to get.
+   */
+  const tonal = (midi, t, length, level, dest, k) => {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    if (k.c1) {
+      lp.frequency.setValueAtTime(k.c0 ?? k.cutoff ?? 2000, t);
+      lp.frequency.exponentialRampToValueAtTime(k.c1, t + Math.min(length, 0.5));
+    } else {
+      lp.frequency.value = k.cutoff ?? 2000;
+    }
+    if (k.q) lp.Q.value = k.q;
+
     const g = ctx.createGain();
-    const len = open ? 0.16 : 0.045;
-    g.gain.setValueAtTime(0.16 * power, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    src.connect(hp);
-    hp.connect(g);
+    const attack = k.attack ?? 0.01;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + attack);
+    if (k.sustain) {
+      const release = k.release ?? 0.12;
+      g.gain.setValueAtTime(level, Math.max(t + attack, t + length - release));
+      g.gain.linearRampToValueAtTime(0.0001, t + length);
+    } else {
+      g.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    }
+
+    for (const v of (k.voices || [{ wave: k.wave || 'sine', detune: 0 }])) {
+      const osc = ctx.createOscillator();
+      osc.type = v.wave;
+      osc.detune.value = v.detune || 0;
+      osc.frequency.setValueAtTime(midiToHz(midi), t);
+      if (k.vibrato) {
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = k.vibrato;
+        const lg = ctx.createGain();
+        lg.gain.value = midiToHz(midi) * 0.008;
+        lfo.connect(lg);
+        lg.connect(osc.frequency);
+        lfo.start(t);
+        lfo.stop(t + length + 0.05);
+      }
+      osc.connect(lp);
+      osc.start(t);
+      osc.stop(t + length + 0.04);
+    }
+    lp.connect(g);
     g.connect(dest);
-    src.start(t);
-    src.stop(t + len + 0.02);
+    if (k.verb !== false) g.connect(verb);
+  };
+
+  /** FM voice: marimba, bell. Two oscillators give a struck, inharmonic attack. */
+  const fmVoice = (midi, t, dur, level, dest, k) => {
+    const hz = midiToHz(midi);
+    const car = ctx.createOscillator();
+    car.type = 'sine';
+    car.frequency.value = hz;
+    const mod = ctx.createOscillator();
+    mod.type = 'sine';
+    mod.frequency.value = hz * (k.ratio ?? 2);
+    const mg = ctx.createGain();
+    mg.gain.setValueAtTime(hz * (k.index ?? 1.5), t);
+    mg.gain.exponentialRampToValueAtTime(hz * 0.02, t + dur * 0.6);
+    mod.connect(mg);
+    mg.connect(car.frequency);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + (k.attack ?? 0.004));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    car.connect(g);
+    g.connect(dest);
+    if (k.verb !== false) g.connect(verb);
+    car.start(t);
+    car.stop(t + dur + 0.03);
+    mod.start(t);
+    mod.stop(t + dur + 0.03);
   };
 
   const playBass = (midi, t, length, power) => {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = midiToHz(midi);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.34 * power, t + 0.02);
-    g.gain.setValueAtTime(0.34 * power, Math.max(t + 0.02, t + length - 0.05));
-    g.gain.linearRampToValueAtTime(0.0001, t + length);
-    osc.connect(g);
-    g.connect(bed);
-    osc.start(t);
-    osc.stop(t + length + 0.03);
+    tonal(midi, t, length, (K.bass.level ?? 0.32) * power, bed, K.bass);
   };
 
-  const playPluck = (midi, t, vol, decay) => {
-    const osc = ctx.createOscillator();
-    osc.type = spec.wave;
-    osc.frequency.value = midiToHz(midi);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(spec.cutoff, t);
-    lp.frequency.exponentialRampToValueAtTime(420, t + decay);
+  /** NES-style pulse wave; `duty` sets the harmonic content (0.125/0.25/0.5). */
+  const pulseWave = (duty) => {
+    const size = 32;
+    const real = new Float32Array(size);
+    const imag = new Float32Array(size);
+    for (let k = 1; k < size; k += 1) imag[k] = (2 / (k * Math.PI)) * Math.sin(Math.PI * k * duty);
+    return ctx.createPeriodicWave(real, imag);
+  };
+  const pulseCache = new Map();
+
+  /** Filtered noise used as a breath, bow or hammer transient. */
+  const transient = (t, dur, level, kind, freq, q = 1) => {
+    const src = ctx.createBufferSource();
+    src.buffer = hatsBuf;
+    const f = ctx.createBiquadFilter();
+    f.type = kind;
+    f.frequency.value = freq;
+    f.Q.value = q;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    g.gain.linearRampToValueAtTime(level, t + Math.min(0.006, dur * 0.25));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(bed);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  };
+
+  /** Vibrato on one oscillator, in cents relative to its own pitch. */
+  const applyVibrato = (osc, t, dur, rate, depth) => {
+    if (!rate) return;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = midiToHz(60) * depth * 12;
+    lfo.connect(g);
+    g.connect(osc.frequency);
+    lfo.start(t);
+    lfo.stop(t + dur + 0.05);
+  };
+
+  /** Additive stack with faster decay on higher partials — a struck string. */
+  const struckVoice = (midi, t, dur, level, k) => {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(k.c0 ?? 2800, t);
+    lp.frequency.exponentialRampToValueAtTime(k.c1 ?? 700, t + dur);
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(level, t + (k.attack ?? 0.003));
+    out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const part of (k.partials || [{ octave: 0, gain: 1 }])) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(midiToHz(midi + part.octave), t);
+      // Upper partials die first; that two-stage decay is what reads as "piano".
+      const pg = ctx.createGain();
+      const partialDur = part.octave === 0 ? dur : dur * Math.max(0.25, 1 - part.octave / 40);
+      pg.gain.setValueAtTime(0.0001, t);
+      pg.gain.linearRampToValueAtTime(part.gain, t + (k.attack ?? 0.003));
+      pg.gain.exponentialRampToValueAtTime(0.0001, t + partialDur);
+      osc.connect(pg);
+      pg.connect(lp);
+      osc.start(t);
+      osc.stop(t + partialDur + 0.03);
+    }
+    if (k.hammer) transient(t, 0.03, k.hammer * level, 'highpass', k.hammerF ?? 3200);
+    lp.connect(out);
+    out.connect(bed);
+    out.connect(verb);
+  };
+
+  /** Bowed string: saw with bow noise, vibrato and a formant peak. */
+  const bowedVoice = (midi, t, dur, level, k) => {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(k.c0 ?? 3000, t);
+    if (k.sustain) lp.frequency.linearRampToValueAtTime(k.c1 ?? 2000, t + Math.min(0.3, dur));
+    else lp.frequency.exponentialRampToValueAtTime(k.c1 ?? 900, t + dur);
+    const peak = ctx.createBiquadFilter();
+    peak.type = 'peaking';
+    peak.frequency.value = k.formant ?? 900;
+    peak.Q.value = 1.1;
+    peak.gain.value = 7;
+    const g = ctx.createGain();
+    const attack = k.attack ?? 0.07;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + attack);
+    if (k.sustain) {
+      g.gain.setValueAtTime(level, Math.max(t + attack, t + dur - 0.12));
+      g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    } else {
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    }
+    for (const detune of [-7, 7]) {
+      const osc = ctx.createOscillator();
+      osc.type = k.wave || 'sawtooth';
+      osc.detune.value = detune;
+      osc.frequency.setValueAtTime(midiToHz(midi), t);
+      applyVibrato(osc, t, dur, k.vibrato, k.vibratoDepth ?? 0.008);
+      osc.connect(lp);
+      osc.start(t);
+      osc.stop(t + dur + 0.04);
+    }
+    if (k.bow) transient(t, 0.05, k.bow * level, 'bandpass', k.bowF ?? 2600, 0.8);
+    lp.connect(peak);
+    peak.connect(g);
+    g.connect(bed);
+    g.connect(verb);
+  };
+
+  /** 笛子: a hollow tone plus breath noise, with vibrato on the held part. */
+  const windVoice = (midi, t, dur, level, k) => {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(k.c0 ?? 2400, t);
+    if (k.sustain) lp.frequency.linearRampToValueAtTime(k.c1 ?? 1800, t + Math.min(0.4, dur));
+    const g = ctx.createGain();
+    const attack = k.attack ?? 0.05;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + attack);
+    g.gain.setValueAtTime(level, Math.max(t + attack, t + dur - 0.1));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    // A flute is nearly a sine; its character lives in the breath and the vibrato.
+    const osc = ctx.createOscillator();
+    osc.type = k.wave || 'sine';
+    osc.frequency.setValueAtTime(midiToHz(midi), t);
+    applyVibrato(osc, t, dur, k.vibrato, k.vibratoDepth ?? 0.012);
+    const wobble = ctx.createOscillator();
+    wobble.type = 'triangle';
+    wobble.frequency.setValueAtTime(midiToHz(midi + 12), t);
+    const wg = ctx.createGain();
+    wg.gain.value = 0.18;
+    wobble.connect(wg);
+    wg.connect(lp);
     osc.connect(lp);
+    osc.start(t);
+    osc.stop(t + dur + 0.04);
+    wobble.start(t);
+    wobble.stop(t + dur + 0.04);
+    if (k.breath) transient(t, 0.09, k.breath * level, 'bandpass', k.breathF ?? 2600, 0.7);
+    if (k.air) transient(t + 0.06, Math.max(0.1, dur - 0.06), k.air * level, 'highpass', 3600);
     lp.connect(g);
     g.connect(bed);
     g.connect(verb);
+  };
+
+  /** Unfiltered pulse/triangle: the 8-bit voice. Nothing shapes it but its envelope. */
+  const chipVoice = (midi, t, dur, level, k) => {
+    const osc = ctx.createOscillator();
+    if (k.synth === 'chipTri') {
+      osc.type = 'triangle';
+    } else {
+      const duty = k.duty ?? 0.5;
+      if (!pulseCache.has(duty)) pulseCache.set(duty, pulseWave(duty));
+      osc.setPeriodicWave(pulseCache.get(duty));
+    }
+    osc.frequency.setValueAtTime(midiToHz(midi), t);
+    const g = ctx.createGain();
+    const attack = k.attack ?? 0.001;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + attack);
+    g.gain.setValueAtTime(level, Math.max(t + attack, t + dur - 0.02));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    // A touch of the room keeps it from sounding like a bare test tone.
+    g.connect(bed);
+    g.connect(verb);
     osc.start(t);
-    osc.stop(t + decay + 0.04);
+    osc.stop(t + dur + 0.02);
+  };
+
+  /** Dispatch one melodic note to whichever instrument the kit names. */
+  const playInstrument = (name, midi, t, vol, decay) => {
+    const k = INSTRUMENTS[name] || INSTRUMENTS.piano;
+    const dur = Math.max(0.08, decay * (k.decayScale ?? 1));
+    const level = vol * (k.level ?? 1);
+    switch (k.synth) {
+      case 'fm': fmVoice(midi, t, dur, level, bed, k); break;
+      case 'struck': struckVoice(midi, t, dur, level, k); break;
+      case 'bowed': bowedVoice(midi, t, dur, level, k); break;
+      case 'wind': windVoice(midi, t, dur, level, k); break;
+      case 'chip':
+      case 'chipTri': chipVoice(midi, t, dur, level, k); break;
+      default: {
+        // Struck/plucked string: fast attack, exponential decay, filter sweep, and a
+        // stack of partials; `q` gives a synth stab its resonant onset.
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(k.c0 ?? spec.cutoff, t);
+        lp.frequency.exponentialRampToValueAtTime(k.c1 ?? 420, t + dur);
+        if (k.q) lp.Q.value = k.q;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(level, t + (k.attack ?? 0.005));
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        const layers = [{ wave: k.wave || spec.wave, gain: 1 }];
+        for (const part of (k.partials || [])) layers.push(part);
+        for (const layer of layers) {
+          const osc = ctx.createOscillator();
+          osc.type = layer.wave;
+          osc.frequency.setValueAtTime(midiToHz(midi + (layer.octave || 0)), t);
+          if (k.bend) osc.frequency.exponentialRampToValueAtTime(midiToHz(midi + (layer.octave || 0) + k.bend), t + Math.min(0.25, dur));
+          const lg = ctx.createGain();
+          lg.gain.value = layer.gain;
+          osc.connect(lg);
+          lg.connect(lp);
+          osc.start(t);
+          osc.stop(t + dur + 0.04);
+        }
+        lp.connect(g);
+        g.connect(bed);
+        g.connect(verb);
+      }
+    }
+  };
+
+  /** The kit's melody line; `answer` alternates with it for a call-and-response. */
+  const playPluck = (midi, t, vol, decay, useAnswer) => {
+    const name = useAnswer && K.answer ? K.answer : K.lead;
+    playInstrument(name, midi, t, vol, decay);
   };
 
   const playPad = (midi, t, length, vol) => {
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = spec.cutoff * 0.7;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + Math.min(0.35, length * 0.3));
-    g.gain.setValueAtTime(vol, Math.max(t + 0.35, t + length - 0.25));
-    g.gain.linearRampToValueAtTime(0.0001, t + length);
-    for (const detune of [-6, 6]) {
-      const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = midiToHz(midi);
-      osc.detune.value = detune;
-      osc.connect(lp);
-      osc.start(t);
-      osc.stop(t + length + 0.05);
-    }
-    lp.connect(g);
-    g.connect(bed);
-    g.connect(verb);
+    const k = K.pad;
+    if (!k) return;
+    const attack = Math.min(k.attack ?? 0.35, length * 0.4);
+    tonal(midi, t, length, vol * (k.level ?? 1), bed, { ...k, attack });
   };
 
   const playRiser = (targetT, power) => {
+    const k = K.riser || { type: 'bandpass', f0: 400, f1: 6000, q: 3, peak: 0.3 };
     const lead = Math.min(0.4, targetT);
     if (lead < 0.12) return;
     const startT = targetT - lead;
@@ -560,13 +1084,13 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     src.buffer = noiseBuf;
     src.loop = true;
     const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 3;
-    bp.frequency.setValueAtTime(400, startT);
-    bp.frequency.exponentialRampToValueAtTime(6000, targetT);
+    bp.type = k.type;
+    bp.Q.value = k.q;
+    bp.frequency.setValueAtTime(k.f0, startT);
+    bp.frequency.exponentialRampToValueAtTime(k.f1, targetT);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, startT);
-    g.gain.linearRampToValueAtTime(0.3 * power, targetT - 0.02);
+    g.gain.linearRampToValueAtTime(k.peak * power, targetT - 0.02);
     g.gain.linearRampToValueAtTime(0.0001, targetT);
     src.connect(bp);
     bp.connect(g);
@@ -585,24 +1109,26 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     sg.gain.setValueAtTime(0.42 * power, t);
     sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
     sub.connect(sg);
-    sg.connect(fade);
+    sg.connect(kitBus);
     sub.start(t);
     sub.stop(t + 0.8);
 
-    playKick(t, 1.1 * power, fade);
+    playKick(t, 1.1 * power, kitBus);
 
+    // The crash bright and length come from the kit too: a gong for 国风, a bright
+    // metal crash for 赛博, a soft wash for 氛围.
     const crash = ctx.createBufferSource();
     crash.buffer = noiseBuf;
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 3400;
-    bp.Q.value = 0.7;
+    bp.frequency.value = K.impact.crash;
+    bp.Q.value = K.impact.crashQ;
     const cg = ctx.createGain();
     cg.gain.setValueAtTime(0.3 * power, t);
     cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
     crash.connect(bp);
     bp.connect(cg);
-    cg.connect(fade);
+    cg.connect(kitBus);
     cg.connect(verb);
     crash.start(t);
     crash.stop(t + 1);
@@ -611,14 +1137,14 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     const stabNotes = [0, 7, 12];
     for (const off of stabNotes) {
       const osc = ctx.createOscillator();
-      osc.type = 'triangle';
+      osc.type = K.impact.stab;
       osc.frequency.value = midiToHz(rootMidi + off);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.14 * power, t + 0.008);
+      g.gain.linearRampToValueAtTime(K.impact.stabPeak * power, t + 0.008);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
       osc.connect(g);
-      g.connect(fade);
+      g.connect(kitBus);
       g.connect(verb);
       osc.start(t);
       osc.stop(t + 0.55);
@@ -706,14 +1232,26 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     // Melodic movement, rotated per bar so the phrase does not repeat verbatim.
     if (!isEnding) {
       const steps = isIntro ? [0] : [0, 6 + (b % 2) * 2, 10];
-      for (const s of steps) {
+      steps.forEach((s, stepIndex) => {
         const t = barT + s * stepDur;
-        if (t >= duration - 0.05) continue;
-        if (isCueAt(t)) continue;
+        if (t >= duration - 0.05) return;
+        if (isCueAt(t)) return;
         const degree = scale[Math.floor(rng() * scale.length)];
         const octave = rng() > 0.45 ? 12 : 0;
-        playPluck(rootNote + degree + octave, t, 0.13 + rng() * 0.05, spec.pluckDecay);
-      }
+        const midi = rootNote + degree + octave;
+        const vol = 0.13 + rng() * 0.05;
+        // The second instrument answers on alternating steps, so a phrase is a交换
+        // between two timbres rather than one colour repeating.
+        const answer = stepIndex % 2 === 1 && K.answer;
+        if (K.arpeggio) {
+          // 8-bit lead writing: cycle the chord quickly instead of holding one note.
+          const arp = [midi, midi + 4, midi + 7, midi + 12];
+          const gap = Math.min(0.055, stepDur / 4);
+          arp.forEach((note, i) => playPluck(note, t + i * gap, vol * 0.85, gap * 3.2, i % 2 === 1));
+        } else {
+          playPluck(midi, t, vol, spec.pluckDecay, answer);
+        }
+      });
     }
 
     // Fill into the next cut when one lands on this bar's end.
@@ -1064,6 +1602,24 @@ async function audioFileToBuffer(file, duration, sampleRate) {
       ].filter(Boolean).join(''));
     }
 
+    /**
+     * Stable per-clip seed for the score engine.
+     *
+     * `renderMusic` falls back to one hardcoded seed, so before this every clip in
+     * every style drew the identical random sequence — the same melodic contours,
+     * the same noise and reverb buffers. Hashing the clip id keeps one clip's score
+     * reproducible while letting different clips differ.
+     */
+    function seedOf(text) {
+      let h = 2166136261;
+      const s = String(text || 'clip');
+      for (let i = 0; i < s.length; i += 1) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0) || 1;
+    }
+
     async function recordAnimation(iframe, opts) {
       const win = iframe && iframe.contentWindow;
       if (!win) throw new Error('预览还没准备好');
@@ -1094,7 +1650,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
           if (opts.onStage) opts.onStage('正在合成配乐…');
           audioBuffer = await renderMusic(opts.music, {
             duration: opts.duration,
-            seed: opts.musicSeed,
+            seed: opts.musicSeed ?? seedOf(opts.clipId),
             cuts: opts.cuts,
             cues: opts.cues,
           });
@@ -1548,8 +2104,8 @@ async function audioFileToBuffer(file, duration, sampleRate) {
         const build = hasModelScore
           // Prefer the score the model wrote for this clip; the engine is the fallback.
           ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats })
-              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues }))
-          : () => renderMusic(music, { duration, cuts, cues });
+              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues, seed: seedOf(anim.id) }))
+          : () => renderMusic(music, { duration, cuts, cues, seed: seedOf(anim.id) });
 
         build()
           .then((buf) => {
@@ -1624,6 +2180,7 @@ async function audioFileToBuffer(file, duration, sampleRate) {
             music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
             scoreBuffer: score || undefined,
+            clipId: anim.id,
             onStage: setStage,
             onProgress: setProgress,
           });
