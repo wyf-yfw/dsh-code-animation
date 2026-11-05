@@ -9,6 +9,7 @@
 [![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-creation-mode?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-creation-mode/stargazers)
 [![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
+[![npm](https://img.shields.io/npm/v/dsh-creation-mode?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
 [![styles](https://img.shields.io/badge/styles-193-e0457b?style=flat-square)](#风格库)
 [![stills](https://img.shields.io/badge/stills-193-7b5bff?style=flat-square)](#风格库)
 
@@ -113,33 +114,45 @@ save_storyboard
 
 ## 安装
 
-要求 dsh `0.2.1` 及以上。
+要求 dsh `0.2.1` 及以上（当前 `0.2.1-rc.5` 亦可，包内声明的是 `engines.dsh: ">=0.2.1-0"`，
+预发布版需要 `-0` 才能匹配）。
 
-```bash
-git clone https://github.com/wyf-yfw/dsh-creation-mode.git
-```
-
-从 npm 安装（已发布后）：
+### 方式一 · 从 npm 安装（推荐）
 
 ```bash
 dsh plugin --profile web add dsh-creation-mode
 ```
 
-或从本地克隆安装：
+包已发布到 npm：<https://www.npmjs.com/package/dsh-creation-mode>。
+npm 官方源与 npmmirror 镜像源均可解析到最新版本——在插件管理器里选哪个源都能装。
+
+### 方式二 · 从源码安装
 
 ```bash
+git clone https://github.com/wyf-yfw/dsh-creation-mode.git
 dsh plugin --profile web add ./dsh-creation-mode/plugin
 ```
 
-一个 bundle 插两行：profile 根行提供风格目录与动画的 HTTP 路由，预设行声明「创作模式」并挂载创作工具。
+适合要改代码的场景：`add` 一个本地目录会用 link 方式安装，改动即时生效。
 
-安装后新建会话，在模式选择器中选择「创作模式」。
+### 装完做什么
 
-### 在插件页搜索安装
+新建会话，在模式选择器里选「创作模式」。
 
-`dsh plugin add` 与插件页的「搜索」是两个独立入口：前者按包名从 npm 源安装，后者读的是
-**插件市场索引**（market index）。仓库根目录的 [`market.json`](market.json) 就是一份
-format 1 索引，把它加到设置里即可在插件页看到「创作模式」：
+一个 bundle 插两行：profile 根行提供风格目录与动画的 HTTP 路由，预设行声明「创作模式」
+并挂载 5 个创作工具。
+
+### 在插件页搜索安装（可选）
+
+DSH 有两个独立入口，别混淆：
+
+| 入口 | 按什么查找 | 需要什么 |
+|---|---|---|
+| 插件管理器的安装框 / `dsh plugin add` | **包名**，从 npm 源下载 | 包已发布（✅ 已发布） |
+| 插件页 Discover 的搜索 | **插件市场索引**（market index） | 一份索引 JSON + 安装可选的市场 bundle |
+
+Discover 不是查 npm，它读的是用户配置的索引地址。本仓库根目录的 [`market.json`](market.json)
+就是一份 format 1 索引：
 
 ```json
 {
@@ -147,8 +160,16 @@ format 1 索引，把它加到设置里即可在插件页看到「创作模式�
 }
 ```
 
-索引通过 `dsh-plugin-market-index` 的 `parseMarketIndex` 校验，`source.type: "npm"`
-表示该版本从 npm 安装；发布新版本后需要同步更新 `versions` 与 `publishTimestamp`。
+索引经 `dsh-plugin-market-index` 的 `parseMarketIndex` 校验，`source.type: "npm"` 表示该版本
+从 npm 安装。发布新版本后要同步更新 `versions` 与 `publishTimestamp`。
+
+使用前需先装可选的插件市场 bundle（默认不启用）：
+
+```bash
+dsh plugin --profile web add @deepseek-ai/dsh-experimental-plugin-market-bundle
+```
+
+之后在设置里把上面的索引地址加进去，插件页就能搜到「创作模式」。
 
 ---
 
