@@ -331,12 +331,6 @@ export function describe(style) {
 }
 
 /**
- * Score presets, mirroring the client's `MUSIC_PRESETS`.
- * Kept here so the Host can suggest one before the browser ever renders.
- */
-export const MUSIC_PRESETS = ['none', 'ambient', 'pulse', 'bright', 'epic', 'chiptune', 'guofeng', 'synth'];
-
-/**
  * Pick a score for a style.
  *
  * The series carries most of the signal (a Chinese-ink piece and a cyberpunk piece

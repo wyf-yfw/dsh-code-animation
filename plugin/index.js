@@ -11,7 +11,7 @@
  * mounted per preset and would otherwise collide on the same prefix.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { BUILD_REV, EXPORT_DIR_NAME, OUTPUT_DIR, STILLS_DIR, TOOL_NAMES, catalog, isApproved } from './data.js';

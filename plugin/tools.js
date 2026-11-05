@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { OUTPUT_DIR, MUSIC_PRESETS, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
+import { OUTPUT_DIR, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_STILLS_PER_CALL = 4;
@@ -186,7 +186,7 @@ function inspectShots(shots, duration) {
  * and a cyberpunk piece do not end up with the same bed.
  * @param requested - the caller's `music` argument, if any.
  * @param style - the chosen style, when known.
- * @returns a preset id from MUSIC_PRESETS.
+ * @returns a preset id, or the caller's own free-form score description.
  */
 function resolveMusic(requested, style) {
   const wanted = String(requested || '').trim();
