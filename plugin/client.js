@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-code-animation',
+  id: 'dsh-creation-mode',
   factory(require) {
     const React = require('react');
     const h = React.createElement;

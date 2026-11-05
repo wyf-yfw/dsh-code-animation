@@ -1,9 +1,26 @@
 {
-  "name": "@local/dsh-code-animation",
+  "name": "dsh-creation-mode",
   "version": "3.0.0",
-  "private": true,
   "type": "module",
-  "description": "193 种代码动画风格：分阶段创作（问需求 → 看参考图选风格 → 审分镜 → 出片）。",
+  "description": "创作模式 / Creation Mode：193 种代码动画风格，在 DeepSeek Harness 对话里直接出片。",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "code-animation",
+    "video",
+    "animation"
+  ],
+  "homepage": "https://github.com/wyf-yfw/dsh-creation-mode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wyf-yfw/dsh-creation-mode.git",
+    "directory": "plugin"
+  },
+  "engines": {
+    "dsh": ">=0.2.1-0"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

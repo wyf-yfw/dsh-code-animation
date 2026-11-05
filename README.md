@@ -119,14 +119,36 @@ save_storyboard
 git clone https://github.com/wyf-yfw/dsh-creation-mode.git
 ```
 
-安装两个 bundle。二者缺一不可：
+从 npm 安装（已发布后）：
 
 ```bash
-dsh plugin install ./dsh-creation-mode/plugin     # 风格库、工具、卡片
-dsh plugin install ./dsh-creation-mode/preset     # 声明「创作模式」
+dsh plugin --profile web add dsh-creation-mode
 ```
 
+或从本地克隆安装：
+
+```bash
+dsh plugin --profile web add ./dsh-creation-mode/plugin
+```
+
+一个 bundle 插两行：profile 根行提供风格目录与动画的 HTTP 路由，预设行声明「创作模式」并挂载创作工具。
+
 安装后新建会话，在模式选择器中选择「创作模式」。
+
+### 在插件页搜索安装
+
+`dsh plugin add` 与插件页的「搜索」是两个独立入口：前者按包名从 npm 源安装，后者读的是
+**插件市场索引**（market index）。仓库根目录的 [`market.json`](market.json) 就是一份
+format 1 索引，把它加到设置里即可在插件页看到「创作模式」：
+
+```json
+{
+  "indexes": ["https://raw.githubusercontent.com/wyf-yfw/dsh-creation-mode/main/market.json"]
+}
+```
+
+索引通过 `dsh-plugin-market-index` 的 `parseMarketIndex` 校验，`source.type: "npm"`
+表示该版本从 npm 安装；发布新版本后需要同步更新 `versions` 与 `publishTimestamp`。
 
 ---
 
@@ -515,7 +537,7 @@ flowchart LR
 两处都注册路由会冲突：
 
 ```
-code-animation-studio (@local/dsh-code-animation):
+code-animation-studio (dsh-creation-mode):
   webserver: duplicate prefix route "/code-animation-api"
 ```
 
@@ -544,7 +566,7 @@ conversation.chat.turnTail（回合末尾，始终展开）
 
 ```
 dsh-creation-mode/
-├── plugin/                  # @local/dsh-code-animation
+├── plugin/                  # npm 包 dsh-creation-mode（bundle 根）
 │   ├── index.js             # Host：路由与挂载；按 config 决定装载哪一半
 │   ├── flow.js              # 六步流程与门禁的系统提示段落
 │   ├── tools.js             # 五个工具的 schema、校验与执行
@@ -554,9 +576,7 @@ dsh-creation-mode/
 │   ├── src/music.js         # 程序化配乐：八个预设、卡点拟合、离线渲染
 │   ├── styles.json          # 341 条风格提示词（其中 193 条已上架）
 │   ├── stills/              # 参考静帧；approved.json 是上架白名单，index.json 是上游清单
-│   └── cordis.patch.yml     # 顶层行：仅开启路由
-├── preset/                  # @local/dsh-code-animation-preset
-│   └── cordis.patch.yml     # 声明「创作模式」
+│   └── cordis.patch.yml     # 两行：根行开启路由；预设行声明「创作模式」
 └── docs/
     ├── cover.html           # 封面源码
     ├── cover.png
@@ -594,7 +614,7 @@ node docs/shoot-cover.cjs      # 输出 1280×640 @2x 的 docs/cover.png
 
 ### 规则：更新插件后必须重启 dsh
 
-Agent 创建模式挂载的是 `@local/dsh-code-animation` 模块的一个实例，该模块在 **dsh 进程启动时导入一次**
+Agent 创建模式挂载的是 `dsh-creation-mode` 模块的一个实例，该模块在 **dsh 进程启动时导入一次**
 并留在 ESM 缓存中。在 Web 界面里禁用再启用插件行不会重新导入模块，因此：
 
 - 修改或升级插件后，**必须重启 `dsh web`**
