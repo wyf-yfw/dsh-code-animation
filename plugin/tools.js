@@ -626,6 +626,8 @@ export function registerCreationTools(deps) {
             '把声音接到 dest 上，并在绝对时间点上 schedule（用 start(t)）。',
             '所有节点必须按 duration 收尾，不要在函数里 await。',
             '卡点用 beats 里的 time：它来自动画代码本身，比 cuts 准。',
+            '禁止做低频扫频底鼓（正弦从一两百赫兹滑到三四十赫兹）：听感像放屁。',
+            '要重音就给固定频率的低正弦加鼓皮噪声，让包络做冲击，不要让频率滑。',
             '留空则退回内置合成引擎。',
           ].join(''),
         },

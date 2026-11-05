@@ -284,7 +284,7 @@ const KITS = {
   guofeng: {
     trim: 1.997, // 响度校准
     // 太鼓：鼓皮噪声为主
-    kick: { f0: 96, f1: 52, sweep: 0.12, dur: 0.55, peak: 0.34, tone: 0.55, thump: 0.36, thumpDur: 0.10, thumpF0: 1400, thumpF1: 160, thumpType: 'bandpass', thumpQ: 0.8 },
+    kick: { f0: 96, f1: 52, dur: 0.55, peak: 0.34, tone: 0.55, thump: 0.36, thumpDur: 0.10, thumpF0: 1400, thumpF1: 160, thumpType: 'bandpass', thumpQ: 0.8 },
     // 梆子：极短高 Q 木质
     snare: { kind: 'wood', type: 'bandpass', f0: 1700, q: 4.5, dur: 0.075, peak: 0.20, attack: 0.0008, body: 430, bodyLevel: 0.10, bodyDur: 0.07 },
     hat: { type: 'highpass', f0: 4600, dur: 0.05, peak: 0.07, attack: 0.004 },
@@ -293,11 +293,11 @@ const KITS = {
     bass: { wave: 'sine', attack: 0.03, sustain: true, release: 0.16, level: 0.30, cutoff: 320 },
     pad: { voices: [{ wave: 'sine', detune: -5 }, { wave: 'triangle', detune: 5 }], attack: 0.65, sustain: true, release: 0.3, cutoff: 700, level: 0.18 },
     riser: { type: 'bandpass', f0: 500, f1: 5200, q: 2, peak: 0.24 },
-    impact: { sub0: 92, sub1: 34, subDur: 0.9, crash: 2600, crashQ: 0.6, stab: 'triangle', stabPeak: 0.13 },
+    impact: { crash: 2600, crashQ: 0.6, stab: 'triangle', stabPeak: 0.13 },
   },
   epic: {
     trim: 0.611, // 响度校准
-    kick: { f0: 88, f1: 40, sweep: 0.20, dur: 0.80, peak: 0.44, tone: 0.85, thump: 0.26, thumpDur: 0.12, thumpF0: 1100, thumpF1: 120 },
+    kick: { f0: 88, f1: 40, dur: 0.80, peak: 0.44, tone: 0.85, thump: 0.26, thumpDur: 0.12, thumpF0: 1100, thumpF1: 120 },
     snare: { kind: 'noise', type: 'bandpass', f0: 2100, q: 1.1, dur: 0.19, peak: 0.26, attack: 0.001, body: 185, bodyWave: 'sine', bodyLevel: 0.20, bodyDur: 0.16 },
     hat: { type: 'highpass', f0: 6600, dur: 0.045, peak: 0.055, attack: 0.004 },
     // 弦乐群：小提琴 + 大提琴分解，而不是铜管主奏
@@ -306,23 +306,23 @@ const KITS = {
     bass: { voices: [{ wave: 'sawtooth', detune: -7 }, { wave: 'sawtooth', detune: 0 }, { wave: 'sawtooth', detune: 7 }], attack: 0.09, sustain: true, release: 0.2, level: 0.26, cutoff: 900 },
     pad: { voices: [{ wave: 'sawtooth', detune: -10 }, { wave: 'sawtooth', detune: -3 }, { wave: 'sawtooth', detune: 3 }, { wave: 'sawtooth', detune: 10 }], attack: 0.4, sustain: true, release: 0.3, cutoff: 2100, level: 0.14 },
     riser: { type: 'bandpass', f0: 300, f1: 4500, q: 1.4, peak: 0.34 },
-    impact: { sub0: 76, sub1: 30, subDur: 1.1, crash: 3000, crashQ: 0.5, stab: 'sawtooth', stabPeak: 0.17 },
+    impact: { crash: 3000, crashQ: 0.5, stab: 'sawtooth', stabPeak: 0.17 },
   },
   synth: {
     trim: 4.377, // 响度校准
-    kick: { f0: 182, f1: 42, sweep: 0.055, dur: 0.55, peak: 0.60, tone: 1, thump: 0.05, thumpDur: 0.02, thumpF0: 800, thumpF1: 90 },
+    kick: { f0: 182, f1: 42, dur: 0.55, peak: 0.60, tone: 1, thump: 0.05, thumpDur: 0.02, thumpF0: 800, thumpF1: 90 },
     snare: { kind: 'noise', type: 'highpass', f0: 1500, q: 0.8, dur: 0.12, peak: 0.26, attack: 0.0008, body: 225, bodyLevel: 0.14, bodyDur: 0.08 },
     hat: { type: 'highpass', f0: 9200, dur: 0.03, peak: 0.10, attack: 0.0006 },
     lead: 'acid',
     bass: { wave: 'sawtooth', attack: 0.004, sustain: true, release: 0.08, level: 0.30, c0: 260, c1: 420, q: 9, resonant: true },
     pad: { voices: [{ wave: 'sawtooth', detune: -14 }, { wave: 'sawtooth', detune: 14 }], attack: 0.22, sustain: true, release: 0.25, cutoff: 1150, level: 0.13 },
     riser: { type: 'bandpass', f0: 600, f1: 7000, q: 4, peak: 0.30 },
-    impact: { sub0: 84, sub1: 26, subDur: 0.95, crash: 4200, crashQ: 0.9, stab: 'square', stabPeak: 0.14 },
+    impact: { crash: 4200, crashQ: 0.9, stab: 'square', stabPeak: 0.14 },
   },
   chiptune: {
     trim: 14.917, // 响度校准
     // NES 没有真正的底鼓：三角波快速下扫当鼓，是芯片音乐的标志手法
-    kick: { f0: 220, f1: 48, sweep: 0.04, dur: 0.16, peak: 0.55, tone: 1, thump: 0.12, thumpDur: 0.015, thumpF0: 1200, thumpF1: 200, thumpType: 'highpass', wave: 'triangle' },
+    kick: { f0: 220, f1: 48, dur: 0.16, peak: 0.55, tone: 1, thump: 0.12, thumpDur: 0.015, thumpF0: 1200, thumpF1: 200, thumpType: 'highpass', wave: 'triangle' },
     // 噪声通道：短促、不做滤波塑形
     snare: { kind: 'noise', type: 'highpass', f0: 2400, q: 0.6, dur: 0.10, peak: 0.24, attack: 0.0004 },
     hat: { type: 'highpass', f0: 7000, dur: 0.025, peak: 0.11, attack: 0.0004 },
@@ -333,11 +333,11 @@ const KITS = {
     bass: { wave: 'triangle', attack: 0.002, sustain: true, release: 0.04, level: 0.34, cutoff: 2400 },
     pad: null,
     riser: { type: 'highpass', f0: 2000, f1: 8000, q: 1, peak: 0.22 },
-    impact: { sub0: 120, sub1: 40, subDur: 0.4, crash: 5200, crashQ: 1.1, stab: 'square', stabPeak: 0.16 },
+    impact: { crash: 5200, crashQ: 1.1, stab: 'square', stabPeak: 0.16 },
   },
   pulse: {
     trim: 6.709, // 响度校准
-    kick: { f0: 205, f1: 52, sweep: 0.05, dur: 0.26, peak: 0.62, tone: 1, thump: 0.09, thumpDur: 0.02, thumpF0: 900, thumpF1: 100 },
+    kick: { f0: 205, f1: 52, dur: 0.26, peak: 0.62, tone: 1, thump: 0.09, thumpDur: 0.02, thumpF0: 900, thumpF1: 100 },
     snare: { kind: 'clap', type: 'bandpass', f0: 1800, q: 1.5, peak: 0.24 },
     hat: { type: 'highpass', f0: 8600, dur: 0.028, peak: 0.10, attack: 0.0006 },
     lead: 'stab',
@@ -345,11 +345,11 @@ const KITS = {
     bass: { wave: 'square', attack: 0.004, sustain: true, release: 0.06, level: 0.30, cutoff: 760 },
     pad: { voices: [{ wave: 'square', detune: -8 }, { wave: 'sawtooth', detune: 8 }], attack: 0.18, sustain: true, release: 0.2, cutoff: 2600, level: 0.09 },
     riser: { type: 'bandpass', f0: 700, f1: 6500, q: 3, peak: 0.30 },
-    impact: { sub0: 88, sub1: 28, subDur: 0.8, crash: 3800, crashQ: 0.8, stab: 'sawtooth', stabPeak: 0.15 },
+    impact: { crash: 3800, crashQ: 0.8, stab: 'sawtooth', stabPeak: 0.15 },
   },
   bright: {
     trim: 8.116, // 响度校准
-    kick: { f0: 150, f1: 72, sweep: 0.04, dur: 0.17, peak: 0.26, tone: 0.5, thump: 0.30, thumpDur: 0.04, thumpF0: 1800, thumpF1: 300, thumpType: 'bandpass', thumpQ: 0.9 },
+    kick: { f0: 150, f1: 72, dur: 0.17, peak: 0.26, tone: 0.5, thump: 0.30, thumpDur: 0.04, thumpF0: 1800, thumpF1: 300, thumpType: 'bandpass', thumpQ: 0.9 },
     snare: { kind: 'wood', type: 'bandpass', f0: 2500, q: 4, dur: 0.055, peak: 0.20, attack: 0.0006, body: 620, bodyLevel: 0.09, bodyDur: 0.05 },
     hat: { type: 'highpass', f0: 6200, dur: 0.06, peak: 0.085, attack: 0.006 },
     // 马林巴主奏，钢琴应答
@@ -358,7 +358,7 @@ const KITS = {
     bass: { wave: 'sine', attack: 0.008, sustain: true, release: 0.08, level: 0.28, cutoff: 500 },
     pad: { voices: [{ wave: 'triangle', detune: -7 }, { wave: 'sine', detune: 7 }], attack: 0.28, sustain: true, release: 0.2, cutoff: 3200, level: 0.12 },
     riser: { type: 'bandpass', f0: 900, f1: 6000, q: 2.5, peak: 0.22 },
-    impact: { sub0: 96, sub1: 40, subDur: 0.6, crash: 4600, crashQ: 0.9, stab: 'sine', stabPeak: 0.12 },
+    impact: { crash: 4600, crashQ: 0.9, stab: 'sine', stabPeak: 0.12 },
   },
   ambient: {
     trim: 1.742, // 响度校准
@@ -371,11 +371,11 @@ const KITS = {
     bass: { wave: 'sine', attack: 0.5, sustain: true, release: 0.5, level: 0.26, cutoff: 240 },
     pad: { voices: [{ wave: 'sine', detune: -12 }, { wave: 'triangle', detune: -2 }, { wave: 'triangle', detune: 2 }, { wave: 'sine', detune: 12 }], attack: 0.9, sustain: true, release: 0.5, cutoff: 560, level: 0.18 },
     riser: { type: 'bandpass', f0: 200, f1: 3000, q: 1.2, peak: 0.18 },
-    impact: { sub0: 64, sub1: 26, subDur: 1.6, crash: 1800, crashQ: 0.4, stab: 'sine', stabPeak: 0.10 },
+    impact: { crash: 1800, crashQ: 0.4, stab: 'sine', stabPeak: 0.10 },
   },
   cinematic: {
     trim: 1.994, // 响度校准
-    kick: { f0: 122, f1: 45, sweep: 0.14, dur: 0.55, peak: 0.42, tone: 0.9, thump: 0.18, thumpDur: 0.07, thumpF0: 1000, thumpF1: 120 },
+    kick: { f0: 122, f1: 45, dur: 0.55, peak: 0.42, tone: 0.9, thump: 0.18, thumpDur: 0.07, thumpF0: 1000, thumpF1: 120 },
     snare: { kind: 'noise', type: 'bandpass', f0: 2000, q: 1.0, dur: 0.15, peak: 0.24, attack: 0.001, body: 200, bodyWave: 'triangle', bodyLevel: 0.15, bodyDur: 0.1 },
     hat: { type: 'highpass', f0: 6800, dur: 0.04, peak: 0.07, attack: 0.003 },
     // 钢琴主奏，小提琴应答
@@ -384,7 +384,7 @@ const KITS = {
     bass: { voices: [{ wave: 'triangle', detune: -4 }, { wave: 'sine', detune: 4 }], attack: 0.02, sustain: true, release: 0.12, level: 0.30, cutoff: 600 },
     pad: { voices: [{ wave: 'sawtooth', detune: -8 }, { wave: 'sawtooth', detune: 0 }, { wave: 'sawtooth', detune: 8 }], attack: 0.5, sustain: true, release: 0.3, cutoff: 1350, level: 0.14 },
     riser: { type: 'bandpass', f0: 400, f1: 5000, q: 2, peak: 0.28 },
-    impact: { sub0: 80, sub1: 28, subDur: 0.95, crash: 3400, crashQ: 0.7, stab: 'triangle', stabPeak: 0.14 },
+    impact: { crash: 3400, crashQ: 0.7, stab: 'triangle', stabPeak: 0.14 },
   },
 };
 
@@ -706,8 +706,9 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
     if (k.tone !== 0) {
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(k.f0, t);
-      osc.frequency.exponentialRampToValueAtTime(k.f1, t + k.sweep);
+      // Hold one frequency. A sine sliding from ~160 Hz down to ~44 Hz is the "fart"
+      // everyone recognises as fake; the impact has to come from the envelope.
+      osc.frequency.setValueAtTime(Math.sqrt(k.f0 * k.f1), t);
       const g = ctx.createGain();
       g.gain.setValueAtTime(k.peak * (k.tone ?? 1) * power, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + k.dur);
@@ -1103,8 +1104,8 @@ async function renderMusic(musicPromptOrPreset, options = {}) {
   const playImpact = (t, power, rootMidi) => {
     const sub = ctx.createOscillator();
     sub.type = 'sine';
-    sub.frequency.setValueAtTime(72, t);
-    sub.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+    // No glide here either: a fixed low tone plus the kick and crash carries the hit.
+    sub.frequency.setValueAtTime(52, t);
     const sg = ctx.createGain();
     sg.gain.setValueAtTime(0.42 * power, t);
     sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
