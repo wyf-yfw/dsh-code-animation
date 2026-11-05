@@ -51,8 +51,11 @@
 **① 命令安装**
 
 ```bash
-dsh plugin --profile web add dsh-creation-mode
+dsh plugin --profile web add -w dsh-creation-mode
 ```
+
+`-w` 不能省：profile 目录带 `pnpm-workspace.yaml`，不加会被 pnpm 当成往 workspace 根装而报
+`ERR_PNPM_ADDING_TO_ROOT`。装完 DSH 会自动把它登记进 `dsh.profile.bundles`。
 
 **② 界面安装**
 
@@ -66,7 +69,7 @@ dsh-creation-mode
 
 ```bash
 git clone https://github.com/wyf-yfw/dsh-creation-mode.git
-dsh plugin --profile web add ./dsh-creation-mode/plugin
+dsh plugin --profile web add -w ./dsh-creation-mode/plugin
 ```
 
 `add` 一个本地目录会用 link 方式安装，改代码即时生效。
@@ -75,14 +78,17 @@ dsh plugin --profile web add ./dsh-creation-mode/plugin
 
 ### 更新
 
-DSH 对第三方插件不提供「更新」按钮，要先卸载再装，然后重启：
+命令行直接覆盖装新版，**不用先卸载**：
 
 ```bash
-dsh plugin --profile web remove dsh-creation-mode
-dsh plugin --profile web add dsh-creation-mode
+dsh plugin --profile web add -w dsh-creation-mode@3.1.0
 ```
 
-重启后新版本才生效（插件模块在进程启动时导入一次）。已存在的会话保留旧版本，验证新版请新建会话。
+重启 `dsh web` 后生效——插件模块在进程启动时导入一次，不重启会继续跑旧版本。
+已存在的会话保留旧版本，验证新版请新建会话。
+
+> 界面里的「添加插件」会提示「该插件已安装」，那是 `installBundle` 的检查：界面上要先卸载再装。
+> 两条路都能更新，命令行省一步。
 
 ### 使用
 

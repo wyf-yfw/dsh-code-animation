@@ -14,7 +14,7 @@
 **1. 装可选的插件市场 bundle**（默认不启用）
 
 ```bash
-dsh plugin --profile web add @deepseek-ai/dsh-experimental-plugin-market-bundle
+dsh plugin --profile web add -w @deepseek-ai/dsh-experimental-plugin-market-bundle
 ```
 
 **2. 把本仓库的索引地址加进设置**
