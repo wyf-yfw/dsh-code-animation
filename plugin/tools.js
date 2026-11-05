@@ -666,6 +666,7 @@ export function registerCreationTools(deps) {
           value.warnings.length ? `注意：${value.warnings.join('；')}` : '',
           `地址：${value.url}`,
           `配乐：${value.music}`,
+          value.scoreUrl ? `配乐地址：${value.scoreUrl}` : '',
           `卡点对齐：${value.cuts.length} 个分镜切点${value.cues && value.cues.length ? ` + ${value.cues.length} 个镜头重点` : ''}已毫秒级精准对齐`,
           '对话末尾已显示预览卡片：点击播放音画同步出声，点击导出直接一键下载成片。',
         ].filter(Boolean).join('\n'),

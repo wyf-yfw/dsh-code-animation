@@ -1272,6 +1272,10 @@ window.__ModuleLoader__.load({
           // to the real edits rather than to a fixed tempo.
           const board = state.storyboards.find((b) => b.id === args.storyboard_id)
             || state.storyboards[state.storyboards.length - 1];
+          // The card can only play the model's score if it knows where it lives, and it
+          // can only sync to beats it was told about. Both were missing here, so every
+          // preview fell back to the built-in engine no matter what score_js said.
+          const scoreUrl = (new RegExp('配乐地址：([^\\s]+)').exec(text) || [])[1] || '';
           return {
             ...state,
             animations: [...state.animations, {
@@ -1282,7 +1286,10 @@ window.__ModuleLoader__.load({
               duration: Number(args.duration) || 8,
               fps: Number(args.fps) || 30,
               music: String(args.music || (board && board.music) || ''),
+              scoreUrl,
               cuts: board ? board.cuts || [] : [],
+              cues: Array.isArray(args.cues) ? args.cues : [],
+              beats: Array.isArray(args.beats) ? args.beats : [],
               warnings: warn ? warn.split('；').map((s) => s.trim()).filter(Boolean) : [],
             }],
           };
