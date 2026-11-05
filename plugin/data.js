@@ -22,6 +22,14 @@ export const APPROVED_FILE = fileURLToPath(new URL('./stills/approved.json', HER
 export const OUTPUT_DIR = fileURLToPath(new URL('./created/', HERE));
 /** Subdirectory an export is written into, under the session directory. */
 export const EXPORT_DIR_NAME = 'code-animation';
+/**
+ * 只留成品：返工不留中间稿。
+ *
+ * 每次 save_animation / save_storyboard 之后，同类旧稿会被删掉，created/ 里只保留
+ * 最近 KEEP_SAVES 份（1 = 只留最新的一版动画工程、配乐工程与分镜）。
+ * 调大可以留几版做对比，但用户要的是「不保留中间过程」，所以默认 1。
+ */
+export const KEEP_SAVES = 1;
 
 /**
  * Build marker surfaced by the health route.
@@ -30,7 +38,7 @@ export const EXPORT_DIR_NAME = 'code-animation';
  * module once at process start, so a running host can still serve an older revision
  * than the one on disk, and this is how that shows up.
  */
-export const BUILD_REV = 11;
+export const BUILD_REV = 15;
 
 /** Tool names this revision registers, in the order they are declared. */
 export const TOOL_NAMES = ['list_styles', 'show_stills', 'get_style', 'save_storyboard', 'save_animation'];

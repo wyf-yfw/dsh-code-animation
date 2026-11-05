@@ -8,10 +8,10 @@
  * No second model call happens here: the Agent that already holds the user's
  * context is the one that authors the animation.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { OUTPUT_DIR, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
+import { KEEP_SAVES, OUTPUT_DIR, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_STILLS_PER_CALL = 4;
@@ -103,6 +103,67 @@ function slug(input) {
 function round(value, digits = 2) {
   const factor = 10 ** digits;
   return Math.round(Number(value) * factor) / factor;
+}
+
+/**
+ * 只留成品：一次创作只保留最近一次保存，不留中间稿。
+ *
+ * 动画是 `anim-<title>-<ts>.{html,score.js,json}`，分镜是 `sb-<title>-<ts>.json`，
+ * 同一个前缀下的文件按 id 归组，除这次刚存的 `keepId` 外，最多再留 KEEP_SAVES-1 份。
+ *
+ * `keepId` 直接算在名额里，所以 KEEP_SAVES = 1 就是「只留这一次」。这一点很重要：
+ * 清理发生在落盘之前还是之后都不影响结果，也不会因为两次保存落在同一毫秒
+ * （mtime 相同、排序谁前谁后说不准）而多留一份。
+ *
+ * @returns 被删掉的文件名，用于在工具返回值里如实说明。
+ */
+function pruneSaves(prefix, keepId) {
+  let names = [];
+  try { names = readdirSync(OUTPUT_DIR); } catch { return []; }
+
+  const sets = new Map();
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const matched = /^(.+?)\.(html|score\.js|json)$/.exec(name);
+    if (!matched) continue;
+    const id = matched[1];
+    const entry = sets.get(id) || { id, mtime: 0 };
+    try { entry.mtime = Math.max(entry.mtime, statSync(join(OUTPUT_DIR, name)).mtimeMs); } catch { /* 读不到时间就按 0 算 */ }
+    sets.set(id, entry);
+  }
+
+  const older = [...sets.values()]
+    .filter((entry) => entry.id !== keepId)
+    .sort((a, b) => b.mtime - a.mtime || b.id.localeCompare(a.id));
+  const keep = new Set([keepId, ...older.slice(0, Math.max(0, KEEP_SAVES - 1)).map((x) => x.id)]);
+
+  const removed = [];
+  for (const id of sets.keys()) {
+    if (keep.has(id)) continue;
+    for (const ext of ['.html', '.score.js', '.json']) {
+      const file = join(OUTPUT_DIR, `${id}${ext}`);
+      if (!existsSync(file)) continue;
+      try { unlinkSync(file); removed.push(`${id}${ext}`); } catch { /* 删不掉就留着，不影响这次保存 */ }
+    }
+  }
+  return removed;
+}
+
+/** 最近一次保存的 id，用作 base 兜底（旧稿已被清理时仍能返工）。 */
+function latestSave(prefix, ext) {
+  try {
+    let best = '';
+    let bestTime = -1;
+    for (const name of readdirSync(OUTPUT_DIR)) {
+      if (!name.startsWith(prefix) || !name.endsWith(ext)) continue;
+      let mtime = 0;
+      try { mtime = statSync(join(OUTPUT_DIR, name)).mtimeMs; } catch { /* 忽略 */ }
+      if (mtime > bestTime) { bestTime = mtime; best = name.slice(0, -ext.length); }
+    }
+    return best;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -515,7 +576,10 @@ export function registerCreationTools(deps) {
       const { warnings, totalSeconds } = inspectShots(shots, duration);
       const music = resolveMusic(args?.music, style);
 
-      const id = `sb-${slug(args?.title)}-${Date.now().toString(36)}`;
+      // 同一毫秒内保存两次会撞 id，后一份会覆盖前一份：探测到空闲的名字为止。
+      const stem = `sb-${slug(args?.title)}-${Date.now().toString(36)}`;
+      let id = stem;
+      for (let n = 2; existsSync(join(OUTPUT_DIR, `${id}.json`)); n++) id = `${stem}-${n}`;
       const storyboard = {
         id,
         title: String(args?.title || '分镜'),
@@ -543,6 +607,12 @@ export function registerCreationTools(deps) {
       };
 
       mkdirSync(OUTPUT_DIR, { recursive: true });
+
+      // 只留成品：分镜也只保留最新这一份，改一次覆盖一次，不堆中间稿。
+      // 先清理再落盘，这样新分镜的 warnings 里能如实写上清了几个文件。
+      const removed = pruneSaves('sb-', id);
+      if (removed.length) storyboard.warnings = [...warnings, `已清理 ${removed.length} 个旧分镜文件，只保留这一份`];
+
       writeFileSync(join(OUTPUT_DIR, `${id}.json`), JSON.stringify(storyboard, null, 2), 'utf8');
       return storyboard;
     },
@@ -555,6 +625,7 @@ export function registerCreationTools(deps) {
       '调用前应当已经完成：风格拍板（get_style）与分镜拍板（save_storyboard）。把分镜 id 传进 storyboard_id，卡片会带上分镜信息。',
       'HTML 必须满足：单个完整文件、只含原生 HTML/JS/Canvas、不引用任何外部库或图片、实现 window.renderAt(t)（t 为秒，同一 t 渲染同一帧）、使用固定种子随机、不启用 requestAnimationFrame 自播。',
       '生成后用 renderAt 检查首帧、中段、尾帧，确认不是黑屏或静止。',
+      '每次保存都会覆盖上一版：工作区里只留最新这一份动画（html + 配乐 + 元数据），旧稿自动删除，不要指望旧版文件还在。',
     ].join('\n'),
     parameters: {
       type: 'object',
@@ -611,6 +682,7 @@ export function registerCreationTools(deps) {
             '返工时用：上一版动画的 id（save_animation 返回值里的 id）。',
             '给了它就可以省略 html，系统会读回上一版正文，只改你这次传的字段。',
             '只换配乐时，传 base_id + 新的 score_js 即可，不必重发整份 HTML。',
+            '工作区只保留最新一版，所以 base_id 写错或已被清理时，系统会自动退到最近一版继续。',
           ].join(''),
         },
         html: { type: 'string', description: '完整的动画 HTML 文件正文。给了 base_id 时可省略。' },
@@ -628,7 +700,7 @@ export function registerCreationTools(deps) {
             '卡点用 beats 里的 time：它来自动画代码本身，比 cuts 准。',
             '禁止做低频扫频底鼓（正弦从一两百赫兹滑到三四十赫兹）：听感像放屁。',
             '要重音就给固定频率的低正弦加鼓皮噪声，让包络做冲击，不要让频率滑。',
-            '留空则退回内置合成引擎。',
+            '必填：没有兜底引擎，不传这段代码这片子就没有声音。',
           ].join(''),
         },
       },
@@ -648,7 +720,7 @@ export function registerCreationTools(deps) {
           cuts: { type: 'array', items: { type: 'number' }, description: '切点秒数，配乐按这些点卡拍。' },
           cues: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '精确卡点列表' },
           beats: { type: 'array', items: { type: 'object', additionalProperties: true }, description: '从动画代码导出的节奏点' },
-          scoreUrl: { type: 'string', description: '模型自写配乐的地址；空串表示使用内置引擎。' },
+          scoreUrl: { type: 'string', description: '模型自写配乐的地址。' },
           duration: { type: 'number' },
           fps: { type: 'integer' },
           url: { type: 'string' },
@@ -676,7 +748,19 @@ export function registerCreationTools(deps) {
     async execute(args) {
       // A revision reuses the previous cut: only the parts the caller actually changed
       // travel over the wire, so "just change the music" stays a two-field call.
-      const baseId = String(args?.base_id || '').trim();
+      const notes = [];
+      let baseId = String(args?.base_id || '').trim();
+      // 旧稿会被自动清理，所以 base_id 指向的那一版可能已经不在了：退到最近一版，
+      // 让「只换配乐」这类返工不会因为文件被清掉而直接失败。
+      if (baseId && !existsSync(join(OUTPUT_DIR, `${baseId}.html`))) {
+        const newest = latestSave('anim-', '.html');
+        if (newest) {
+          notes.push(`上一版 ${baseId} 已随旧稿清理，已改用最近一版 ${newest} 作为底稿`);
+          baseId = newest;
+        } else {
+          baseId = '';
+        }
+      }
       let base;
       if (baseId) {
         try {
@@ -702,7 +786,16 @@ export function registerCreationTools(deps) {
       const warnings = inspectHtml(html);
       const styleId = args?.style_id || base?.styleId;
       const style = styleId ? styleById(styleId) : undefined;
-      const storyboardId = String(args?.storyboard_id || base?.storyboardId || '');
+      let storyboardId = String(args?.storyboard_id || base?.storyboardId || '');
+
+      // 分镜同样只留最新一份，旧 id 可能已被清理：退到最近一版分镜，别让卡点凭空消失。
+      if (storyboardId && !existsSync(join(OUTPUT_DIR, `${storyboardId}.json`))) {
+        const newestBoard = latestSave('sb-', '.json');
+        if (newestBoard) {
+          notes.push(`分镜 ${storyboardId} 已随旧稿清理，已改用最近一版 ${newestBoard}`);
+          storyboardId = newestBoard;
+        }
+      }
 
       // The storyboard supplies both the score choice and the cut points; without it
       // the score still works, it just has no edits to land on.
@@ -767,6 +860,21 @@ export function registerCreationTools(deps) {
         .filter((b) => b.time > 0.02 && b.time < duration)
         .sort((a, b) => a.time - b.time);
 
+      // 配乐必须由模型当场写。没有兜底引擎：拿不到 score_js 就报错，让 Agent 重写，
+      // 绝不悄悄换成一段通用配乐。校验放在写文件之前，否则被拒的那次会留下孤儿 HTML。
+      let scoreJs = stripScore(args?.score_js);
+      if (!scoreJs && baseId && base?.scoreUrl) {
+        try { scoreJs = readFileSync(join(OUTPUT_DIR, `${baseId}.score.js`), 'utf8'); } catch { /* 下面统一报错 */ }
+      }
+      if (!scoreJs) {
+        throw new Error('缺少 score_js：配乐必须由你为这个片子当场写，没有兜底引擎。'
+          + '返工时可以传 base_id 沿用上一版配乐，但首版必须自带 score_js。');
+      }
+      if (!/createOscillator|createBufferSource|createGain|createBiquadFilter/.test(scoreJs)) {
+        throw new Error('score_js 里没有创建任何音频节点（createOscillator / createBufferSource / '
+          + 'createGain / createBiquadFilter），这段代码发不出声音。');
+      }
+
       // Two saves inside the same millisecond would otherwise share an id and the
       // second would silently overwrite the first, so probe until the name is free.
       mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -776,33 +884,26 @@ export function registerCreationTools(deps) {
 
       writeFileSync(join(OUTPUT_DIR, `${id}.html`), html, 'utf8');
 
-      // A model-written score replaces the built-in engine entirely for this clip.
-      let scoreUrl = '';
-      let scoreJs = stripScore(args?.score_js);
-      if (!scoreJs && baseId && base?.scoreUrl) {
-        try { scoreJs = readFileSync(join(OUTPUT_DIR, `${baseId}.score.js`), 'utf8'); } catch { /* keep built-in engine */ }
-      }
-      if (scoreJs) {
-        if (!/createOscillator|createBufferSource|createGain|createBiquadFilter/.test(scoreJs)) {
-          warnings.push('自写配乐里没有创建任何音频节点，已退回内置引擎');
-        } else {
-          writeFileSync(join(OUTPUT_DIR, `${id}.score.js`), scoreJs, 'utf8');
-          scoreUrl = `/code-animation-api/score/${id}`;
-        }
-      }
+      writeFileSync(join(OUTPUT_DIR, `${id}.score.js`), scoreJs, 'utf8');
+      const scoreUrl = `/code-animation-api/score/${id}`;
 
       // Without beats the score has to infer where the picture peaks, which is exactly
       // the guessing the beats parameter exists to remove.
-      if (scoreUrl && !beats.length) {
+      if (!beats.length) {
         warnings.push('配乐没有收到 beats：卡点只能靠 cuts 推，精度会差一些');
       }
+
+      // 只留成品：这一版已经落盘，再把之前的动画稿（html + 配乐 + sidecar）全部删掉。
+      // 必须写在所有写入之后，否则新稿会被自己的清理逻辑扫到。
+      const removed = pruneSaves('anim-', id);
+      if (removed.length) notes.push(`已清理 ${removed.length} 个旧稿文件，只保留这一版`);
 
       const value = {
         id,
         title: String(args?.title || base?.title || '动画'),
         styleId: style ? style.id : '',
         styleName: style ? style.name : '',
-        music: scoreUrl ? '模型自写配乐' : music,
+        music: music && music !== 'none' ? music : '模型自写配乐',
         cuts,
         cues,
         beats,
@@ -811,7 +912,7 @@ export function registerCreationTools(deps) {
         fps,
         url: `/code-animation-api/animation/${id}`,
         bytes,
-        warnings,
+        warnings: notes.length ? [...notes, ...warnings] : warnings,
       };
       if (storyboardId) value.storyboardId = storyboardId;
 

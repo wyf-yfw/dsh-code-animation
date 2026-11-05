@@ -10,7 +10,7 @@
  * Routes are profile-wide, so only the root row registers them; the preset row is
  * mounted per preset and would otherwise collide on the same prefix.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,6 +83,39 @@ function resolveExportDir(requested, fallbackRoot) {
   }
 
   return join(OUTPUT_DIR, 'exports');
+}
+
+/** 导出目录里记录「本插件写过哪些成片」的清单，只用来删自己写过的文件。 */
+const EXPORT_INDEX = '.creation-mode-exports.json';
+
+/**
+ * 只留成品：导出目录里也只保留这一次的成片。
+ *
+ * 只删清单里记过的、由本插件自己写出来的文件，用户放在同一目录的其他视频不会被碰。
+ * 清单本身用点号开头，导出卡片里不会显示它。
+ *
+ * @returns 被删掉的旧成片文件名。
+ */
+function pruneExports(dir, keepName) {
+  const index = join(dir, EXPORT_INDEX);
+  let previous = [];
+  try {
+    const parsed = JSON.parse(readFileSync(index, 'utf8'));
+    if (Array.isArray(parsed?.files)) previous = parsed.files.filter((n) => typeof n === 'string');
+  } catch { /* 第一次导出：还没有清单 */ }
+
+  const removed = [];
+  for (const name of previous) {
+    if (name === keepName) continue;
+    const file = join(dir, name);
+    if (!existsSync(file)) continue;
+    try { unlinkSync(file); removed.push(name); } catch { /* 删不掉就留着 */ }
+  }
+
+  try {
+    writeFileSync(index, JSON.stringify({ files: [keepName] }, null, 2), 'utf8');
+  } catch { /* 清单写不了不影响导出本身 */ }
+  return removed;
 }
 
 function readBody(req, limit) {
@@ -160,11 +193,13 @@ export function apply(ctx, config = {}) {
             mkdirSync(dir, { recursive: true });
             const file = join(dir, name);
             writeFileSync(file, body);
-            trace(`export ${name} ${body.length}B -> ${file}`);
+            const removed = pruneExports(dir, name);
+            trace(`export ${name} ${body.length}B -> ${file}${removed.length ? `（清理旧成片 ${removed.length} 个）` : ''}`);
             return send(res, 200, JSON.stringify({
               path: file,
               dir,
               bytes: body.length,
+              removed,
             }), 'application/json; charset=utf-8');
           }
 
@@ -209,7 +244,24 @@ export function apply(ctx, config = {}) {
           if (url.startsWith(`${PREFIX}/animation/`)) {
             const id = safeId(url.slice(`${PREFIX}/animation/`.length));
             const file = id ? join(OUTPUT_DIR, `${id}.html`) : '';
-            if (!file || !existsSync(file)) return send(res, 404, 'not found');
+            // 旧稿会被清理（只留最新一版），所以历史卡片点开会落到这里：给一句话，
+            // 而不是让 iframe 里空着显示 not found。
+            if (!file || !existsSync(file)) {
+              const gone = [
+                '<!doctype html><meta charset="utf-8">',
+                '<body style="margin:0;display:flex;align-items:center;justify-content:center;',
+                'height:100vh;background:#111;color:#888;',
+                'font:14px/1.6 system-ui,sans-serif;text-align:center">',
+                '<div>这一版已经被清理<br><span style="font-size:12px;opacity:.6">',
+                '工作区只保留最新的成品，请看对话里最新那张卡片</span></div></body>',
+              ].join('');
+              res.writeHead(404, {
+                'content-type': 'text/html; charset=utf-8',
+                'content-length': Buffer.byteLength(gone),
+                'cache-control': 'no-store',
+              });
+              return res.end(gone);
+            }
             const html = readFileSync(file, 'utf8');
             res.writeHead(200, {
               'content-type': 'text/html; charset=utf-8',

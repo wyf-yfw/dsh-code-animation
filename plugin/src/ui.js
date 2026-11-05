@@ -122,7 +122,42 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /* __MUSIC_ENGINE__ */
+    /**
+     * 把用户自己选的音频文件解码成 AudioBuffer，并铺满整段片长。
+     *
+     * 这是唯一一处「不是模型写的配乐」还能进片子的入口，而且必须由用户主动选文件；
+     * 插件自己不会生成任何兜底配乐。
+     */
+    async function audioFileToBuffer(file, duration, sampleRate = 44100) {
+      const bytes = await file.arrayBuffer();
+      const ctx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+      const decoded = await ctx.decodeAudioData(bytes);
+      const targetLength = Math.ceil(duration * decoded.sampleRate);
+      const out = ctx.createBuffer(2, targetLength, decoded.sampleRate);
+
+      for (let ch = 0; ch < 2; ch += 1) {
+        const from = decoded.getChannelData(Math.min(ch, decoded.numberOfChannels - 1));
+        const to = out.getChannelData(ch);
+        const take = Math.min(targetLength, from.length);
+        to.set(from.subarray(0, take));
+        // 素材比片子短就首尾相接地铺满，不做拉伸，免得变速变调。
+        if (take < targetLength && from.length > 0) {
+          let offset = take;
+          while (offset < targetLength) {
+            const chunk = Math.min(from.length, targetLength - offset);
+            to.set(from.subarray(0, chunk), offset);
+            offset += chunk;
+          }
+        }
+      }
+
+      const fadeLen = Math.min(Math.floor(out.sampleRate * 0.4), targetLength);
+      for (let ch = 0; ch < 2; ch += 1) {
+        const data = out.getChannelData(ch);
+        for (let i = 0; i < fadeLen; i += 1) data[targetLength - 1 - i] *= i / fadeLen;
+      }
+      return out;
+    }
 
     /**
      * Container preference, best first.
@@ -320,8 +355,9 @@ window.__ModuleLoader__.load({
 
     /**
      * Drive a detached document frame frame by frame and record it through MediaRecorder.
-     * @param opts.music - a preset id, or an AudioBuffer for a user-supplied track.
-     *   Any audio is mixed at render time, so video and score start together.
+     * @param opts.scoreBuffer - 模型写的配乐，已经离线渲染好的 AudioBuffer。
+     * @param opts.musicBuffer - 用户自己选的音频文件，优先级高于 scoreBuffer。
+     *   两者都不给就是无声导出；这里不会凭空合成配乐。
      * @param opts.cuts - cut times in seconds; the score is fitted and accented to them.
      */
     /**
@@ -365,24 +401,6 @@ window.__ModuleLoader__.load({
       ].filter(Boolean).join(''));
     }
 
-    /**
-     * Stable per-clip seed for the score engine.
-     *
-     * `renderMusic` falls back to one hardcoded seed, so before this every clip in
-     * every style drew the identical random sequence — the same melodic contours,
-     * the same noise and reverb buffers. Hashing the clip id keeps one clip's score
-     * reproducible while letting different clips differ.
-     */
-    function seedOf(text) {
-      let h = 2166136261;
-      const s = String(text || 'clip');
-      for (let i = 0; i < s.length; i += 1) {
-        h ^= s.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-      }
-      return (h >>> 0) || 1;
-    }
-
     async function recordAnimation(iframe, opts) {
       const win = iframe && iframe.contentWindow;
       if (!win) throw new Error('预览还没准备好');
@@ -396,28 +414,16 @@ window.__ModuleLoader__.load({
       const videoTrack = stream.getVideoTracks()[0];
       const tracks = [videoTrack];
 
-      // Audio, when requested, is mixed into the same recording session so the two
-      // tracks share one clock.
+      // Audio is mixed into the same recording session so the two tracks share one clock.
+      // There is no engine behind this: the buffer must be the model's score (or a file
+      // the user picked). Missing it is an error, not a reason to synthesize something.
       let audioCtx;
       let source;
       let audioBuffer;
       let analyser;
-      const wantsMusic = opts.music && opts.music !== 'none';
-      if (wantsMusic || opts.musicBuffer) {
-        if (opts.musicBuffer) {
-          audioBuffer = opts.musicBuffer;
-        } else if (opts.scoreBuffer) {
-          // Reuse the buffer already rendered for auditioning: same audio as the preview.
-          audioBuffer = opts.scoreBuffer;
-        } else {
-          if (opts.onStage) opts.onStage('正在合成配乐…');
-          audioBuffer = await renderMusic(opts.music, {
-            duration: opts.duration,
-            seed: opts.musicSeed ?? seedOf(opts.clipId),
-            cuts: opts.cuts,
-            cues: opts.cues,
-          });
-        }
+      const wantsAudio = opts.scoreBuffer || opts.musicBuffer;
+      if (wantsAudio) {
+        audioBuffer = opts.musicBuffer || opts.scoreBuffer;
         audioCtx = new AudioContext();
         const destination = audioCtx.createMediaStreamDestination();
         source = audioCtx.createBufferSource();
@@ -857,25 +863,30 @@ window.__ModuleLoader__.load({
       }, [stopAudio]);
 
       // Render the score once so auditioning is instant and export reuses the buffer.
+      // 只有模型写的 score_js 会被渲染：没有兜底引擎，拿不到就是没声音，并说明原因。
       useEffect(() => {
         if (custom) { scoreRef.current = custom; return undefined; }
-        const hasModelScore = !!anim.scoreUrl;
-        if (!hasModelScore && (!music || music === 'none')) { scoreRef.current = null; return undefined; }
+        if (music === 'none') { scoreRef.current = null; setScoreBuffer(null); return undefined; }
+        if (!anim.scoreUrl) {
+          scoreRef.current = null;
+          setScoreBuffer(null);
+          setNote('这一版没有配乐代码，无法出声；请让 Agent 重新提交 score_js');
+          return undefined;
+        }
         let cancelled = false;
         scoreRef.current = null;
 
-        const build = hasModelScore
-          // Prefer the score the model wrote for this clip; the engine is the fallback.
-          ? () => renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats })
-              .then((buf) => buf || renderMusic(music || 'cinematic', { duration, cuts, cues, seed: seedOf(anim.id) }))
-          : () => renderMusic(music, { duration, cuts, cues, seed: seedOf(anim.id) });
-
-        build()
+        renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats })
           .then((buf) => {
             if (cancelled) return;
+            if (!buf) {
+              setNote('配乐代码没有渲染出声音，请让 Agent 修 score_js');
+              setScoreBuffer(null);
+              return;
+            }
             scoreRef.current = buf;
             // Hand the buffer to the timeline so it can draw the true waveform.
-            setScoreBuffer(buf || null);
+            setScoreBuffer(buf);
           })
           .catch(() => {});
         return () => { cancelled = true; };
@@ -929,18 +940,20 @@ window.__ModuleLoader__.load({
         setStage('');
         try {
           // The score may still be rendering when export is pressed; wait for it so the
-          // exported audio is the same one the preview played.
+          // exported audio is the same one the preview played. 没有兜底引擎：等不到就报错。
           let score = scoreRef.current;
           if (!score && !custom && anim.scoreUrl) {
             setStage('正在合成配乐…');
             score = await renderModelScore(anim.scoreUrl, { duration, cuts, cues, beats }).catch(() => null);
+          }
+          if (!custom && music !== 'none' && !score) {
+            throw new Error('配乐还没合成出来，无法导出。请让 Agent 重新提交 score_js。');
           }
           const { blob, container, hasAudio, audioPeak } = await recordAnimation(frameRef.current, {
             duration,
             fps,
             cuts,
             container: activeFormat,
-            music: custom ? 'none' : music,
             musicBuffer: custom || undefined,
             scoreBuffer: score || undefined,
             clipId: anim.id,
@@ -1272,10 +1285,10 @@ window.__ModuleLoader__.load({
           // to the real edits rather than to a fixed tempo.
           const board = state.storyboards.find((b) => b.id === args.storyboard_id)
             || state.storyboards[state.storyboards.length - 1];
-          // The card can only play the model's score if it knows where it lives, and it
-          // can only sync to beats it was told about. Both were missing here, so every
-          // preview fell back to the built-in engine no matter what score_js said.
-          const scoreUrl = (new RegExp('配乐地址：([^\\s]+)').exec(text) || [])[1] || '';
+          // The card can only play the model's score if it knows where it lives.
+          // 先读回执里的「配乐地址」，读不到就直接按 id 拼：配乐现在是必填项，每次保存
+          // 都一定写了 <id>.score.js，所以这个地址永远有效——不再依赖回执文案的措辞。
+          const scoreUrl = (new RegExp('配乐地址：([^\\s]+)').exec(text) || [])[1] || `${API}/score/${id}`;
           return {
             ...state,
             animations: [...state.animations, {
