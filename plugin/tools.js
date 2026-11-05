@@ -106,6 +106,22 @@ function round(value, digits = 2) {
 }
 
 /**
+ * Phrases that make on-screen copy read as machine-written.
+ *
+ * These are warnings, never blocks: a line can quote one of them on purpose, and the
+ * model judges that. They exist because the prompt's ban list only works if the draft
+ * reports back when it was ignored.
+ */
+const AI_TELLS = [
+  '赋能', '闭环', '抓手', '颗粒度', '链路', '矩阵', '生态位',
+  '综上所述', '值得一提的是', '让我们一起', '前所未有',
+  '极致', '震撼', '惊艳', '颠覆', '化繁为简', '由浅入深', '层层递进',
+];
+
+/** Characters a viewer can comfortably read per second in a subtitle. */
+const CHARS_PER_SECOND = 5.5;
+
+/**
  * Check a shot list for the mistakes that make a storyboard unusable.
  * @returns warnings plus the total covered seconds; warnings render on the card.
  */
@@ -134,6 +150,19 @@ function inspectShots(shots, duration) {
     if (start > cursor + 0.05) warnings.push(`${label}与上一场之间有 ${round(start - cursor)}s 空档`);
     if (start < cursor - 0.05) warnings.push(`${label}与上一场时间重叠`);
     if (!String(shot.scene || '').trim()) warnings.push(`${label}没有写画面内容`);
+
+    // On-screen copy is read once, at speed. A line that outlasts its shot is the
+    // most common reason a draft feels rushed, so it is measured, not left to taste.
+    const caption = String(shot.text || '').trim();
+    if (caption) {
+      const span = Math.max(0, end - start);
+      const limit = Math.max(4, Math.ceil(span * CHARS_PER_SECOND));
+      if (caption.length > limit) {
+        warnings.push(`${label}字幕 ${caption.length} 字，${round(span)}s 的镜头最多约 ${limit} 字，删到只剩一件事`);
+      }
+      const tells = AI_TELLS.filter((word) => caption.includes(word));
+      if (tells.length) warnings.push(`${label}字幕有套话「${tells.join('、')}」，换成具体的东西`);
+    }
 
     cursor = Math.max(cursor, end);
     covered += Math.max(0, end - start);
