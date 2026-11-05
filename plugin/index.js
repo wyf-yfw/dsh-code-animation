@@ -203,6 +203,32 @@ export function apply(ctx, config = {}) {
             }), 'application/json; charset=utf-8');
           }
 
+          // 样式库面板用的一次性目录快照：只给已上架的 193 种，含参考图地址。
+          if (url.startsWith(`${PREFIX}/styles`) && req.method === 'GET') {
+            const { series, styles } = catalog();
+            const body = JSON.stringify({
+              series: Object.entries(series || {}).map(([id, name]) => ({ id, name })),
+              styles: styles.map((style) => ({
+                id: style.id,
+                name: style.name,
+                en: style.en || '',
+                series: style.series,
+                seriesName: style.seriesName,
+                category: style.category,
+                description: style.desc,
+                fit: style.fit,
+                tags: style.tags || [],
+                stillUrl: `${PREFIX}/still/${style.id}`,
+              })),
+            });
+            res.writeHead(200, {
+              'content-type': 'application/json; charset=utf-8',
+              'content-length': Buffer.byteLength(body),
+              'cache-control': 'no-store',
+            });
+            return res.end(body);
+          }
+
           if (url.startsWith(`${PREFIX}/export-dir`) && req.method === 'GET') {
             const query = new URL(url, 'http://localhost').searchParams;
             const fallbackRoot = scoped.get('workingDirectory')?.defaultDirectory;

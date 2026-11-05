@@ -107,6 +107,37 @@ window.__ModuleLoader__.load({
 .cas-lightbox{position:fixed;inset:0;z-index:9100;background:rgba(4,5,8,.88);display:flex;align-items:center;
   justify-content:center;padding:32px;cursor:zoom-out}
 .cas-lightbox img{max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+
+/* 样式库：会话里的第三个页签（对话 / 轨迹 / 样式库） */
+.cas-lib-view{display:flex;flex-direction:column;gap:10px;padding:16px;min-height:0}
+.cas-lib-head{display:flex;align-items:center;gap:10px}
+.cas-lib-title{font-weight:600;font-size:14px}
+.cas-lib-count{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.cas-lib-search{flex:1;height:30px;padding:0 10px;border-radius:8px;outline:none;min-width:0;
+  border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);
+  color:var(--dsw-alias-label-primary);font:13px/1 inherit}
+.cas-lib-search:focus{border-color:var(--dsw-alias-border-l2)}
+.cas-lib-chips{display:flex;flex-wrap:wrap;gap:6px}
+.cas-chip{height:24px;padding:0 9px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--dsw-alias-border-l1);background:transparent;
+  color:var(--dsw-alias-label-secondary);font:11.5px/1 inherit}
+.cas-chip:hover{border-color:var(--dsw-alias-border-l2)}
+.cas-chip[data-on="1"]{background:var(--dsw-alias-label-primary);border-color:transparent;
+  color:var(--dsw-alias-bg-base)}
+.cas-lib-body{overflow:auto;min-height:240px;max-height:calc(100vh - 260px)}
+.cas-lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.cas-lib-card{border:1px solid var(--dsw-alias-border-l1);border-radius:9px;overflow:hidden;
+  background:var(--dsw-alias-bg-layer-1);padding:0;text-align:left;cursor:zoom-in;
+  color:inherit;font:inherit}
+.cas-lib-card:hover{border-color:var(--dsw-alias-border-l2)}
+.cas-lib-card img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;
+  background:var(--dsw-alias-bg-layer-2)}
+.cas-lib-cap{padding:7px 9px}
+.cas-lib-id{font-size:10px;font-weight:600;letter-spacing:.5px;color:var(--dsw-alias-label-secondary)}
+.cas-lib-name{margin-left:6px;font-size:12.5px}
+.cas-lib-desc{display:block;margin-top:3px;font-size:11px;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cas-lib-empty{padding:48px 0;text-align:center;font-size:13px;color:var(--dsw-alias-label-secondary)}
 `;
 
     const PALETTE = ['#ff8a3d', '#e0457b', '#7b5bff', '#3fd7c0', '#4d6bfe', '#ffc04d'];
@@ -1404,6 +1435,113 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * 样式库视图：把 193 种已上架风格连同参考图一次列全。
+     *
+     * 目录来自 Host 的 /code-animation-api/styles，参考图走 /still/<id>，两者都只
+     * 认已上架的风格，所以这里看到的就是 Agent 能选到的那一批。
+     *
+     * 它注册成 conversation.view，也就是「对话 / 轨迹」旁边多出来的那个页签。
+     */
+    function StyleLibrary({ sessionId, useSessions }) {
+      const selector = useMemo(() => (state) => {
+        const value = state.byId[sessionId]?.projectionValues?.agentPreset;
+        return typeof value === 'string' ? value : undefined;
+      }, [sessionId]);
+      const preset = useSessions(selector);
+      const [data, setData] = useState(null);
+      const [error, setError] = useState('');
+      const [query, setQuery] = useState('');
+      const [series, setSeries] = useState('*');
+      const [zoom, setZoom] = useState('');
+
+      useEffect(() => {
+        let alive = true;
+        fetch(`${API}/styles`)
+          .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+          .then((payload) => { if (alive) setData(payload); })
+          .catch((cause) => { if (alive) setError(cause.message || '目录加载失败'); });
+        return () => { alive = false; };
+      }, []);
+
+      useEffect(() => {
+        const onKey = (event) => { if (event.key === 'Escape') setZoom(''); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+
+      const all = (data && data.styles) || [];
+      const list = useMemo(() => {
+        const keyword = query.trim().toLowerCase();
+        return all.filter((style) => {
+          if (series !== '*' && style.series !== series) return false;
+          if (!keyword) return true;
+          return [style.id, style.name, style.en, style.description, style.fit, (style.tags || []).join(' ')]
+            .join(' ').toLowerCase().includes(keyword);
+        });
+      }, [all, query, series]);
+
+      const chips = [{ id: '*', name: '全部' }, ...((data && data.series) || [])];
+
+      // 这个页签对所有会话都注册，但只有创作模式的会话有内容可看。
+      if (preset !== 'code-animation') {
+        return h('div', { className: 'cas-lib-view' },
+          h('style', null, CSS),
+          h('div', { className: 'cas-lib-empty' }, '样式库只在创作模式的会话里可用'));
+      }
+
+      return h('div', { className: 'cas-lib-view' },
+        h('style', null, CSS),
+        h('div', { className: 'cas-lib-head' },
+          h('span', { className: 'cas-lib-title' }, '样式库'),
+          h('span', { className: 'cas-lib-count' }, error || `${list.length} / ${all.length}`),
+          h('input', {
+            className: 'cas-lib-search',
+            placeholder: '搜编号、名字、气质或题材，例如 水墨 / 赛博 / B3',
+            value: query,
+            onChange: (event) => setQuery(event.target.value),
+          }),
+        ),
+        h('div', { className: 'cas-lib-chips' },
+          chips.map((chip) => h('button', {
+            key: chip.id,
+            type: 'button',
+            className: 'cas-chip',
+            'data-on': series === chip.id ? '1' : '0',
+            onClick: () => setSeries(chip.id),
+          }, chip.id === '*' ? chip.name : `${chip.id} ${chip.name}`)),
+        ),
+        h('div', { className: 'cas-lib-body' },
+          error
+            ? h('div', { className: 'cas-lib-empty' }, `目录加载失败：${error}`)
+            : !data
+              ? h('div', { className: 'cas-lib-empty' }, '正在加载…')
+              : !list.length
+                ? h('div', { className: 'cas-lib-empty' }, '没有匹配的风格')
+                : h('div', { className: 'cas-lib-grid' },
+                  list.map((style) => h('button', {
+                    key: style.id,
+                    type: 'button',
+                    className: 'cas-lib-card',
+                    title: [style.description, style.fit].filter(Boolean).join(' · '),
+                    onClick: () => setZoom(style.stillUrl),
+                  },
+                  h('img', { src: style.stillUrl, alt: `${style.id} ${style.name}`, loading: 'lazy' }),
+                  h('div', { className: 'cas-lib-cap' },
+                    h('span', { className: 'cas-lib-id' }, style.id),
+                    h('span', { className: 'cas-lib-name' }, style.name),
+                    h('span', { className: 'cas-lib-desc' }, style.description || style.fit || ''),
+                  ),
+                  ))),
+        ),
+        zoom
+          ? h('div', {
+            className: 'cas-lightbox',
+            onClick: () => setZoom(''),
+          }, h('img', { src: zoom, alt: '' }))
+          : null);
+    }
+
     return {
       inject: ['slots', 'uiConversation'],
       apply(ctx) {
@@ -1427,6 +1565,16 @@ window.__ModuleLoader__.load({
             key: 'save_storyboard',
           }, StoryboardRow);
         });
+
+        // 样式库做成「对话 / 轨迹」旁边的第三个页签：view 槽的每个注册就是页签行
+        // 里的一项，内容由同一个组件渲染。非创作模式的会话也能点开，里面只说明
+        // 它属于创作模式，不报错也不空白。
+        ctx.slots.inject('conversation.view', () => ctx.slots.register({
+          name: 'conversation.view',
+          id: 'styles',
+          order: 20,
+          label: '样式库',
+        }, StyleLibrary));
       },
     };
   },
