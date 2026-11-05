@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>创作模式 · 架构</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0d10; }
+  body {
+    width: 1200px; height: 700px; overflow: hidden;
+    font-family: "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC",
+                 "Microsoft YaHei", system-ui, sans-serif;
+    color: #e6edf3; -webkit-font-smoothing: antialiased;
+  }
+  svg { display: block; }
+  .mono { font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; }
+</style>
+</head>
+<body>
+<svg width="1200" height="700" viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5c6472"/>
+    </marker>
+    <marker id="arrowWarm" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff8a3d"/>
+    </marker>
+    <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e6edf3"/>
+      <stop offset="55%" stop-color="#ff8a3d"/>
+      <stop offset="100%" stop-color="#e0457b"/>
+    </linearGradient>
+    <linearGradient id="toolGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1b2028"/>
+      <stop offset="100%" stop-color="#151a21"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景网格 -->
+  <g opacity="0.5">
+    <path d="M0 0H1200V700H0z" fill="#0b0d10"/>
+  </g>
+
+  <!-- 标题 -->
+  <text x="48" y="58" font-size="34" font-weight="700" fill="url(#titleGrad)">创作模式 · 架构</text>
+  <text x="48" y="86" font-size="14" fill="#7d8794">一个 bundle 插两行，挂进两个作用域；路由归 profile，工具归预设。</text>
+
+  <!-- ── 用户对话 ── -->
+  <rect x="420" y="112" width="360" height="66" rx="12" fill="#141a22" stroke="#2b3542"/>
+  <text x="600" y="141" font-size="16" font-weight="600" fill="#e6edf3" text-anchor="middle">用户对话</text>
+  <text x="600" y="162" font-size="12.5" fill="#7d8794" text-anchor="middle">自然语言提需求 · 拍板风格与分镜</text>
+
+  <!-- 对话 → 预设 -->
+  <line x1="600" y1="178" x2="600" y2="216" stroke="#5c6472" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="612" y="203" font-size="11.5" fill="#8b949e">调用工具</text>
+
+  <!-- ── 创作模式预设 ── -->
+  <rect x="120" y="220" width="960" height="196" rx="16" fill="#101419" stroke="#2b3542"/>
+  <rect x="120" y="220" width="4" height="196" rx="2" fill="#ff8a3d"/>
+  <text x="148" y="252" font-size="16" font-weight="600" fill="#e6edf3">创作模式 · Agent 预设作用域</text>
+  <rect x="470" y="234" width="196" height="24" rx="12" fill="#1d232c" stroke="#333c48"/>
+  <text x="568" y="250" font-size="11.5" class="mono" fill="#8b949e" text-anchor="middle">tools: true · routes: false</text>
+
+  <!-- 五个工具 -->
+  <g font-size="12.5" class="mono" text-anchor="middle">
+    <rect x="148" y="272" width="150" height="38" rx="9" fill="url(#toolGrad)" stroke="#3a4553"/>
+    <text x="223" y="296" fill="#c9d4e2">list_styles</text>
+
+    <rect x="312" y="272" width="150" height="38" rx="9" fill="url(#toolGrad)" stroke="#3a4553"/>
+    <text x="387" y="296" fill="#c9d4e2">show_stills</text>
+
+    <rect x="476" y="272" width="150" height="38" rx="9" fill="url(#toolGrad)" stroke="#3a4553"/>
+    <text x="551" y="296" fill="#c9d4e2">get_style</text>
+
+    <rect x="640" y="272" width="150" height="38" rx="9" fill="url(#toolGrad)" stroke="#3a4553"/>
+    <text x="715" y="296" fill="#c9d4e2">save_storyboard</text>
+
+    <rect x="804" y="272" width="150" height="38" rx="9" fill="url(#toolGrad)" stroke="#3a4553"/>
+    <text x="879" y="296" fill="#c9d4e2">save_animation</text>
+  </g>
+
+  <!-- flow.js -->
+  <rect x="148" y="326" width="806" height="34" rx="9" fill="#161c24" stroke="#2f3945"/>
+  <text x="164" y="348" font-size="12" class="mono" fill="#8b949e">flow.js</text>
+  <text x="228" y="348" font-size="12" fill="#7d8794">系统提示：六步流程 · 两道确认门禁 · 文案标准 · 配乐推导</text>
+
+  <!-- 预设 → 根层 -->
+  <line x1="600" y1="416" x2="600" y2="452" stroke="#5c6472" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="612" y="440" font-size="11.5" fill="#8b949e">写入 HTML + 配乐</text>
+
+  <!-- ── profile 根层 ── -->
+  <rect x="120" y="456" width="960" height="150" rx="16" fill="#101419" stroke="#2b3542"/>
+  <rect x="120" y="456" width="4" height="150" rx="2" fill="#3fd7c0"/>
+  <text x="148" y="488" font-size="16" font-weight="600" fill="#e6edf3">profile 根层</text>
+  <rect x="300" y="470" width="200" height="24" rx="12" fill="#1d232c" stroke="#333c48"/>
+  <text x="400" y="486" font-size="11.5" class="mono" fill="#8b949e" text-anchor="middle">routes: true · tools: false</text>
+
+  <text x="148" y="528" font-size="12.5" class="mono" fill="#3fd7c0">/code-animation-api</text>
+  <g font-size="12" class="mono" fill="#8b949e">
+    <text x="330" y="528">/still/:id</text>
+    <text x="440" y="528">/animation/:id</text>
+    <text x="572" y="528">/health</text>
+    <text x="656" y="528">/export</text>
+    <text x="740" y="528">/score</text>
+  </g>
+  <text x="148" y="560" font-size="12" fill="#7d8794">提供风格目录、参考静帧与生成好的动画；导出由浏览器录制，不经服务端。</text>
+  <text x="148" y="584" font-size="12" fill="#7d8794">路由是 profile 级的：每个预设各挂一份会在同一前缀上冲突。</text>
+
+  <!-- 根层 → 对话（卡片回流） -->
+  <path d="M1080 531 H1136 V145 H788"
+        fill="none" stroke="#ff8a3d" stroke-width="1.6" stroke-dasharray="5 4"
+        marker-end="url(#arrowWarm)"/>
+  <text x="962" y="170" font-size="12" fill="#ff8a3d" text-anchor="middle">卡片回到对话</text>
+
+  <!-- 底部：卡片渲染位置 -->
+  <text x="120" y="630" font-size="12.5" fill="#7d8794">卡片渲染位置</text>
+  <g font-size="12">
+    <rect x="120" y="640" width="380" height="48" rx="8" fill="#161c24" stroke="#2f3945"/>
+    <text x="136" y="660" class="mono" fill="#8b949e">tool.call.toolview</text>
+    <text x="136" y="678" fill="#5f6a78">参考静帧 · 分镜草稿（结果返回时立即出现）</text>
+
+    <rect x="520" y="640" width="380" height="48" rx="8" fill="#161c24" stroke="#2f3945"/>
+    <text x="536" y="660" class="mono" fill="#8b949e">conversation.chat.turnTail</text>
+    <text x="536" y="678" fill="#5f6a78">动画卡片（回合结束时发布）</text>
+  </g>
+</svg>
+</body>
+</html>
