@@ -78,7 +78,13 @@ dsh plugin --profile web add -w ./dsh-creation-mode/plugin
 
 ### 更新
 
-命令行直接覆盖装新版，**不用先卸载**：
+命令行直接覆盖装最新版，**不用先卸载**：
+
+```bash
+dsh plugin --profile web add -w dsh-creation-mode
+```
+
+版本号是可选的——不写就是装 npm 上的 `latest`。想锁版本时再写：
 
 ```bash
 dsh plugin --profile web add -w dsh-creation-mode@3.1.0
