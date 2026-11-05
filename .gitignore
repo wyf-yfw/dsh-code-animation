@@ -13,3 +13,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# 导出清单：插件写在导出目录里的运行产物
+.creation-mode-exports.json

@@ -44,6 +44,12 @@
 
 要求 dsh `0.2.1` 及以上。
 
+<div align="center">
+<a href="docs/demo.mp4"><img src="docs/demo-poster.jpg" alt="创作模式 48 秒演示：说需求、选风格、改分镜、导出成片" width="82%"></a>
+</div>
+
+<p align="center"><sub>48 秒演示，画面与配乐都是插件在对话里当场生成的 · 点封面播放</sub></p>
+
 ### 安装
 
 三种装法，任选一种。前两种效果相同，只是入口不同。
