@@ -22,8 +22,8 @@
 ## 这是什么
 
 把 [XiaoyeCodes/code-animation-prompts](https://github.com/XiaoyeCodes/code-animation-prompts)
-的 341 种风格提示词封装成 DeepSeek Harness 的一个 Agent 模式。风格只有配上合格的参考静帧才会
-开放，当前 **193 种已上架**，其余 148 种等补图后逐个上架。
+的 193 种风格提示词封装成 DeepSeek Harness 的一个 Agent 模式。每种风格都配了参考静帧，
+选之前能先看到画面。
 
 对话里的 Agent 会问你想要什么，挑几条风格给你看画面，和你确认分镜，然后**自己写 HTML + Canvas
 把片子做出来**——不经过第二次模型调用。成品以卡片形式出现在对话里，可直接拖动预览、试听配乐、
