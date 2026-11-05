@@ -48,11 +48,29 @@
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | `title` | string | 片名 |
-| `html` | string | 完整的动画 HTML 正文，上限 2 MB |
+| `html` | string | 完整的动画 HTML 正文，上限 2 MB；给了 `base_id` 时可省略 |
+| `base_id` | string | 返工时填上一版的 id，继承未传的字段 |
 | `style_id` | string | 采用的风格编号 |
 | `storyboard_id` | string | 已确认的分镜 id |
 | `duration` / `fps` | number | 覆盖分镜中的取值 |
-| `music` | enum | 覆盖分镜中的配乐 |
+| `music` | string | 覆盖分镜中的配乐 |
+| `score_js` | string | 自写的配乐合成代码；留空退回内置引擎 |
+| `beats` | object[] | 从动画代码导出的精确节奏点，卡点最可靠的来源 |
+| `cues` | object[] | 镜头内部的重点时刻 |
+
+### 返工
+
+卡片只从 `save_animation` 的返回值里产生，所以**交付后改任何东西都要再调一次**。
+只改一部分时传 `base_id`，系统读回上一版的正文与元数据，只覆盖这次传的字段：
+
+| 想改什么 | 传什么 |
+|---|---|
+| 只换配乐 | `base_id` + `score_js` |
+| 只改画面 | `base_id` + `html`（配乐自动沿用） |
+| 改时长 | `base_id` + `duration`（切点重算） |
+
+每次提交生成一张新卡片，旧的留在历史里可对照。每次保存还会写一份 `<id>.json`
+元数据与（有自写配乐时）`<id>.score.js`，供下次返工继承。
 
 ## 分镜校验
 

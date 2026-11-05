@@ -605,7 +605,15 @@ export function registerCreationTools(deps) {
         },
         duration: { type: 'number', description: '片长（秒），用于预览进度条与导出。默认 8。' },
         fps: { type: 'integer', description: '帧率，默认 30。' },
-        html: { type: 'string', description: '完整的动画 HTML 文件正文。' },
+        base_id: {
+          type: 'string',
+          description: [
+            '返工时用：上一版动画的 id（save_animation 返回值里的 id）。',
+            '给了它就可以省略 html，系统会读回上一版正文，只改你这次传的字段。',
+            '只换配乐时，传 base_id + 新的 score_js 即可，不必重发整份 HTML。',
+          ].join(''),
+        },
+        html: { type: 'string', description: '完整的动画 HTML 文件正文。给了 base_id 时可省略。' },
         score_js: {
           type: 'string',
           description: [
@@ -622,7 +630,7 @@ export function registerCreationTools(deps) {
           ].join(''),
         },
       },
-      required: ['title', 'html'],
+      required: [],
       additionalProperties: false,
     },
     output: {
@@ -663,8 +671,25 @@ export function registerCreationTools(deps) {
       presentationMeta: (_args, value) => value,
     },
     async execute(args) {
-      const html = stripWrappers(args?.html);
-      if (!html) throw new Error('html 为空');
+      // A revision reuses the previous cut: only the parts the caller actually changed
+      // travel over the wire, so "just change the music" stays a two-field call.
+      const baseId = String(args?.base_id || '').trim();
+      let base;
+      if (baseId) {
+        try {
+          base = JSON.parse(readFileSync(join(OUTPUT_DIR, `${baseId}.json`), 'utf8'));
+        } catch { /* no sidecar: fall back to the html alone */ }
+      }
+
+      let html = stripWrappers(args?.html);
+      if (!html && baseId) {
+        try { html = readFileSync(join(OUTPUT_DIR, `${baseId}.html`), 'utf8'); } catch { /* reported below */ }
+      }
+      if (!html) {
+        throw new Error(baseId
+          ? `找不到上一版 ${baseId} 的正文，请改用完整 html 重新提交`
+          : 'html 为空');
+      }
       const bytes = Buffer.byteLength(html, 'utf8');
       if (bytes > MAX_HTML_BYTES) throw new Error(`HTML 过大（${(bytes / 1048576).toFixed(1)} MB），上限 2 MB`);
 
@@ -672,8 +697,9 @@ export function registerCreationTools(deps) {
       assertRecordable(html);
 
       const warnings = inspectHtml(html);
-      const style = args?.style_id ? styleById(args.style_id) : undefined;
-      const storyboardId = String(args?.storyboard_id || '');
+      const styleId = args?.style_id || base?.styleId;
+      const style = styleId ? styleById(styleId) : undefined;
+      const storyboardId = String(args?.storyboard_id || base?.storyboardId || '');
 
       // The storyboard supplies both the score choice and the cut points; without it
       // the score still works, it just has no edits to land on.
@@ -688,7 +714,7 @@ export function registerCreationTools(deps) {
         warnings.push('没有关联分镜：这版动画未经用户拍板');
       }
 
-      const music = resolveMusic(args?.music || (board && board.music), style);
+      const music = resolveMusic(args?.music || base?.music || (board && board.music), style);
       const cuts = Array.isArray(board?.shots)
         ? board.shots
           .map((shot) => round(Number(shot.start) || 0))
@@ -710,8 +736,10 @@ export function registerCreationTools(deps) {
           }
         }
       }
-      if (Array.isArray(args?.cues)) {
-        for (const c of args.cues) {
+      const cueSource = Array.isArray(args?.cues) && args.cues.length ? args.cues
+        : (Array.isArray(base?.cues) ? base.cues : []);
+      if (cueSource.length) {
+        for (const c of cueSource) {
           const t = round(Number(c.time) || 0);
           if (t > 0.05 && t < (Number(args?.duration) || board.duration || 8)) {
             cues.push({ time: t, type: c.type || 'hit', label: c.label || '' });
@@ -719,12 +747,14 @@ export function registerCreationTools(deps) {
         }
       }
 
-      const duration = Math.max(1, Math.min(Number(args?.duration) || board?.duration || 8, 120));
-      const fps = Math.max(1, Math.min(Number(args?.fps) || board?.fps || 30, 60));
+      const duration = Math.max(1, Math.min(Number(args?.duration) || base?.duration || board?.duration || 8, 120));
+      const fps = Math.max(1, Math.min(Number(args?.fps) || base?.fps || board?.fps || 30, 60));
 
       // Beats come from the animation code the model just wrote, so they are the most
       // trusted sync points: keep sub-second precision rather than rounding like cues.
-      const beats = (Array.isArray(args?.beats) ? args.beats : [])
+      const beatSource = Array.isArray(args?.beats) && args.beats.length ? args.beats
+        : (Array.isArray(base?.beats) ? base.beats : []);
+      const beats = beatSource
         .map((b) => ({
           time: Math.round((Number(b.time) || 0) * 1000) / 1000,
           type: String(b.type || 'hit'),
@@ -734,14 +764,21 @@ export function registerCreationTools(deps) {
         .filter((b) => b.time > 0.02 && b.time < duration)
         .sort((a, b) => a.time - b.time);
 
-      const id = `anim-${slug(args?.title)}-${Date.now().toString(36)}`;
-
+      // Two saves inside the same millisecond would otherwise share an id and the
+      // second would silently overwrite the first, so probe until the name is free.
       mkdirSync(OUTPUT_DIR, { recursive: true });
+      const stem = `anim-${slug(args?.title || base?.title)}-${Date.now().toString(36)}`;
+      let id = stem;
+      for (let n = 2; existsSync(join(OUTPUT_DIR, `${id}.html`)); n++) id = `${stem}-${n}`;
+
       writeFileSync(join(OUTPUT_DIR, `${id}.html`), html, 'utf8');
 
       // A model-written score replaces the built-in engine entirely for this clip.
       let scoreUrl = '';
-      const scoreJs = stripScore(args?.score_js);
+      let scoreJs = stripScore(args?.score_js);
+      if (!scoreJs && baseId && base?.scoreUrl) {
+        try { scoreJs = readFileSync(join(OUTPUT_DIR, `${baseId}.score.js`), 'utf8'); } catch { /* keep built-in engine */ }
+      }
       if (scoreJs) {
         if (!/createOscillator|createBufferSource|createGain|createBiquadFilter/.test(scoreJs)) {
           warnings.push('自写配乐里没有创建任何音频节点，已退回内置引擎');
@@ -759,7 +796,7 @@ export function registerCreationTools(deps) {
 
       const value = {
         id,
-        title: String(args?.title || '动画'),
+        title: String(args?.title || base?.title || '动画'),
         styleId: style ? style.id : '',
         styleName: style ? style.name : '',
         music: scoreUrl ? '模型自写配乐' : music,
@@ -774,6 +811,9 @@ export function registerCreationTools(deps) {
         warnings,
       };
       if (storyboardId) value.storyboardId = storyboardId;
+
+      // Keep a sidecar so a later revision can inherit everything it did not resend.
+      writeFileSync(join(OUTPUT_DIR, `${id}.json`), JSON.stringify({ ...value, baseId: baseId || undefined }, null, 2), 'utf8');
       return value;
     },
   }));
