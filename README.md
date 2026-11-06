@@ -6,13 +6,12 @@
 
 193 种代码动画风格，接入 DeepSeek Harness 对话框：说一句话就出片。
 
-[![stars](https://img.shields.io/github/stars/wyf-yfw/dsh-creation-mode?style=flat-square&logo=github&logoColor=white&label=stars&color=ff8a3d)](https://github.com/wyf-yfw/dsh-creation-mode/stargazers)
-[![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
-[![npm](https://img.shields.io/npm/v/dsh-creation-mode?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
-[![downloads](https://img.shields.io/npm/dm/dsh-creation-mode?style=flat-square&label=downloads&color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
-[![styles](https://img.shields.io/badge/styles-193-e0457b?style=flat-square)](docs/styles.md)
-[![deps](https://img.shields.io/badge/deps-0-2f9e6e?style=flat-square)](docs/internals.md#限制)
+[![stars](https://badgen.net/github/stars/wyf-yfw/dsh-creation-mode?icon=github&color=ff8a3d)](https://github.com/wyf-yfw/dsh-creation-mode/stargazers)
+[![license](https://badgen.net/badge/license/MIT/3ea675)](LICENSE)
+[![DeepSeek Harness](https://badgen.net/badge/DeepSeek%20Harness/plugin/4d6bfe)](https://github.com/deepseek-ai/dsh)
+[![npm](https://badgen.net/npm/v/dsh-creation-mode?color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
+[![styles](https://badgen.net/badge/styles/193/e0457b)](docs/styles.md)
+[![deps](https://badgen.net/badge/deps/0/2f9e6e)](docs/internals.md#限制)
 
 [快速开始](#快速开始) · [文档](#文档) · [风格库](docs/styles.md) · [配乐](docs/music.md) · [导出](docs/export.md)
 
