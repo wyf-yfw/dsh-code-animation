@@ -38,7 +38,7 @@ export const KEEP_SAVES = 1;
  * module once at process start, so a running host can still serve an older revision
  * than the one on disk, and this is how that shows up.
  */
-export const BUILD_REV = 20;
+export const BUILD_REV = 21;
 
 /** Tool names this revision registers, in the order they are declared. */
 export const TOOL_NAMES = ['list_styles', 'show_stills', 'get_style', 'save_storyboard', 'save_animation'];

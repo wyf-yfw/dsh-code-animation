@@ -85,6 +85,33 @@ function resolveExportDir(requested, fallbackRoot) {
   return join(OUTPUT_DIR, 'exports');
 }
 
+/**
+ * 让动画在预览框里按原比例缩放到完整可见。
+ *
+ * 生成的动画多半把画布写成固定像素（`canvas{width:1280px;height:720px}`），而卡片
+ * 里的预览框只有几百像素宽，于是 iframe 内部出现滚动条、画面被切掉。
+ *
+ * 补的这层样式只影响显示尺寸：canvas 的 width/height 属性（像素缓冲区）不动，
+ * 所以 recordAnimation 走 captureStream 导出时拿到的仍是原始分辨率。
+ *
+ * 用 !important 是因为动画自己那条 `canvas{width:1280px}` 和本规则同等特异性，
+ * 而它的 <style> 可能排在后面；不压制的话自适应会失效。
+ */
+const FIT_STYLE = [
+  '<style data-creation-mode-fit>',
+  'html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#05070b}',
+  'body{display:flex;align-items:center;justify-content:center}',
+  'canvas{max-width:100%!important;max-height:100%!important;',
+  'width:auto!important;height:auto!important;object-fit:contain}',
+  '</style>',
+].join('');
+
+function fitToFrame(html) {
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${FIT_STYLE}</head>`);
+  if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, (tag) => `${tag}${FIT_STYLE}`);
+  return FIT_STYLE + html;
+}
+
 /** 导出目录里记录「本插件写过哪些成片」的清单，只用来删自己写过的文件。 */
 const EXPORT_INDEX = '.creation-mode-exports.json';
 
@@ -289,12 +316,17 @@ export function apply(ctx, config = {}) {
               return res.end(gone);
             }
             const html = readFileSync(file, 'utf8');
+            // 生成出来的动画常常把画布写死成 1280×720 或 1920×1080，塞进卡片那个
+            // 几百像素宽的预览框就会溢出、出滚动条、画面看不全。这里统一补一层
+            // 自适应样式：画布按原比例缩到框里，不再滚动。
+            // 只改显示尺寸，canvas 的像素缓冲区不动，导出仍然是原始分辨率。
+            const fitted = fitToFrame(html);
             res.writeHead(200, {
               'content-type': 'text/html; charset=utf-8',
-              'content-length': Buffer.byteLength(html),
+              'content-length': Buffer.byteLength(fitted),
               'cache-control': 'no-store',
             });
-            return res.end(html);
+            return res.end(fitted);
           }
 
           return send(res, 404, 'not found');

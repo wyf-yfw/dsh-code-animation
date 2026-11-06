@@ -116,6 +116,9 @@ export const FLOW_PROMPT = `## 创作流程
 画面必须满足：
 - 页面 HTML 必须显式包含一个 <canvas> 元素，画面全部用 Canvas 2D 或 WebGL 绘制，绝对禁止写纯 DOM/CSS 动效（DOM 元素无法被浏览器 MediaRecorder 捕获导出为视频）。
 - 必须实现 window.renderAt(t) 接口（t 为秒，同一时刻 t 渲染同一帧）。
+- 画布可以按 1920×1080 或 1280×720 这样的固定像素画，但页面要能自适应：
+  给 canvas 加 max-width:100% / max-height:100%，让它按原比例缩进预览框。
+  写死 width:1280px 又没有任何约束，卡片里就会溢出、出滚动条、画面看不全。
 
 #### 交付之后的修改：必须重新调用 save_animation
 
