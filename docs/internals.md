@@ -118,8 +118,8 @@ curl -s http://127.0.0.1:3080/code-animation-api/health
 ```json
 {
   "ok": true,
-  "rev": 7,
-  "tools": ["list_styles", "show_stills", "get_style", "save_storyboard", "save_animation"],
+  "rev": 24,
+  "tools": ["list_styles", "show_stills", "get_style", "save_storyboard", "save_animation", "get_reference"],
   "styles": 193,
   "stills": 193
 }

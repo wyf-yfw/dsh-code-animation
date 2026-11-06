@@ -68,7 +68,8 @@ for (const t of cuts) drum(t, 0.7);                                             
 
 ## 28 条音色配方
 
-提示词里附了 **28 条已逐个试听校准**的音色配方，覆盖原声与电子两大类：
+28 条音色配方在 [工艺参考](references.md) 的 `timbre` 里（`get_reference("timbre")` 取），
+已逐个试听校准，覆盖原声与电子两大类：
 
 | 类别 | 条目 |
 |---|---|
@@ -87,6 +88,8 @@ for (const t of cuts) drum(t, 0.7);                                             
 | 古筝拨弦 | 明亮拨弦，金属余韵 | Karplus-Strong，循环反馈 0.998 |
 
 另外附了三个完整代码示例：Karplus-Strong 拨弦、状态变量滤波器扫频、超级锯齿叠加。
+
+同一份参考里还有**编曲**部分：同一时刻最多 4 层、密度曲线、卡点处的三种处理、收尾衰减。
 
 校准用到的试听素材在 [`docs/sound-samples/`](sound-samples/index.html)，可以直接打开逐条试听。
 
