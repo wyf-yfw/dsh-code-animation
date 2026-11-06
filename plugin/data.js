@@ -32,16 +32,40 @@ export const EXPORT_DIR_NAME = 'code-animation';
 export const KEEP_SAVES = 1;
 
 /**
+ * 工艺参考：按需加载的 Markdown，放在 references/ 下。
+ *
+ * 原来这些内容全压在 flow.js 里，每轮都要占满上下文；拆出来后由 get_reference
+ * 按需取。13 份参考对应 13 个工艺方向，和 Remotion 的 skill 组织方式一致。
+ */
+export const REFERENCES_DIR = fileURLToPath(new URL('./references/', HERE));
+
+export const REFERENCES = {
+  motion: '运动与缓动',
+  transitions: '转场',
+  typography: '中文排版',
+  color: '调色与质感',
+  effects: '视觉特效',
+  'text-animation': '文字动画',
+  particles: '粒子系统',
+  camera: '镜头与空间',
+  'data-viz': '数据可视化',
+  sequencing: '编排',
+  audio: '音画同步',
+  timbre: '音色配方',
+  copy: '文案标准',
+};
+
+/**
  * Build marker surfaced by the health route.
  *
  * Bump it whenever tool names or their result shape change: a preset mounts this
  * module once at process start, so a running host can still serve an older revision
  * than the one on disk, and this is how that shows up.
  */
-export const BUILD_REV = 21;
+export const BUILD_REV = 23;
 
 /** Tool names this revision registers, in the order they are declared. */
-export const TOOL_NAMES = ['list_styles', 'show_stills', 'get_style', 'save_storyboard', 'save_animation'];
+export const TOOL_NAMES = ['list_styles', 'show_stills', 'get_style', 'save_storyboard', 'save_animation', 'get_reference'];
 
 let cached;
 let approvedCache;

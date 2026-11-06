@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { KEEP_SAVES, OUTPUT_DIR, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
+import { KEEP_SAVES, OUTPUT_DIR, REFERENCES, REFERENCES_DIR, STILLS_DIR, catalog, defaultMusicFor, describe, searchStyles, styleById } from './data.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_STILLS_PER_CALL = 4;
@@ -273,6 +273,56 @@ export function registerCreationTools(deps) {
     ? deps.getAttachments
     : () => deps.attachments;
   const disposers = [];
+
+  disposers.push(tools.register({
+    name: 'get_reference',
+    description: [
+      '取一份工艺参考：缓动、转场、排版、调色、音画同步、音色配方、文案标准。',
+      '这些是写画面和配乐的具体做法，按需加载，不占每轮的上下文。',
+      '写动画之前至少取 motion；画面里有中文标题取 typography；要片子感取 color；',
+      '写 score_js 之前取 timbre 和 audio；写分镜文案之前取 copy。',
+      '同一份取过一次就不必再取。',
+    ].join('\n'),
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: '参考名：motion / transitions / typography / color / audio / timbre / copy。',
+        },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          title: { type: 'string' },
+          body: { type: 'string', description: '参考全文（Markdown）。' },
+        },
+        required: ['name', 'title', 'body'],
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{ type: 'text', text: value.body }],
+      presentationMeta: (_args, value) => value,
+    },
+    async execute(args) {
+      const name = String(args?.name || '').trim().toLowerCase();
+      const hit = REFERENCES[name];
+      if (!hit) {
+        throw new Error(`没有这份参考：${name || '(空)'}。可用：${Object.keys(REFERENCES).join(' / ')}`);
+      }
+      let body;
+      try {
+        body = readFileSync(join(REFERENCES_DIR, `${name}.md`), 'utf8');
+      } catch {
+        throw new Error(`参考文件缺失：references/${name}.md`);
+      }
+      return { name, title: hit, body };
+    },
+  }));
 
   disposers.push(tools.register({
     name: 'list_styles',
