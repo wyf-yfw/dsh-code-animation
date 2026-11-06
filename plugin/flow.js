@@ -39,12 +39,25 @@ export const FLOW_PROMPT = `## 创作流程
 在 ask_user_question 的 options 里列出展示的各款风格（例如 label: "C1 水墨晕染"、label: "L19 写意山水"、label: "R6 东方赛博"、以及 label: "换一批风格"）。
 **绝对禁止用普通文本让用户回复，必须调用 ask_user_question 工具生成点击按钮！**
 
-- 用户点击选定了 → get_style 取完整规范，进入第 4 步。
+- 用户点击选定了 → get_style 取完整规范，然后**先取两份参考再写分镜**：
+  get_reference("color") 定调色板，get_reference("typography") 定字号阶梯。
+  这两件事必须在分镜之前定，因为分镜里的「画面内容」和「字幕长度」都依赖它们——
+  字号没定，你根本不知道一条字幕能放几个字。
+- 定完不用给用户看，自己记住即可，进入第 4 步。
 - 都不满意 → 回第 2 步换一批候选，或问清他想要什么感觉再选。
 - 用户说"你定" → 你选最匹配的一条，但仍要把选择说清楚并给出理由。
 
 ### 第 4 步 · 出分镜草稿与配乐卡点谱
-读完风格规范后，把片子拆成 3–8 个镜头，调用 save_storyboard 提交草稿。每个镜头写清：
+
+**先取两份参考，再拆镜头：**
+
+- get_reference("sequencing") —— 分镜就是时间轴。每场多长、节奏曲线怎么走、
+  哪里密哪里疏、开场三秒怎么抓人、收尾留几秒，都在这一份里。**不先读它，
+  分镜的时长和顺序一定是拍脑袋定的。**
+- get_reference("audio") —— 分镜要同时给出配乐卡点谱，那就得知道卡点怎么落、
+  重音怎么分档。
+
+拆成 3–8 个镜头，调用 save_storyboard 提交草稿。每个镜头写清：
 - 起止时间（秒）与时长
 - 画面内容：谁 / 在哪 / 在做什么
 - 画面上的文字：字幕与标题，写原文
@@ -107,28 +120,32 @@ export const FLOW_PROMPT = `## 创作流程
 5. 修改阶段**不必重走风格与分镜门禁**；只有用户要换风格或改分镜结构时才回到第 3、5 步。
 6. 改完说清楚改了什么，别只说「已优化」。
 
-#### 工艺参考：写之前先取，不要凭印象写
+#### 写动画前要取的参考
 
-画面和配乐的具体做法拆成了 13 份参考，用 get_reference 按需取。**写动画前至少取一份**
-——不要用通用套路凑，这是「像不像专业片子」的分界线。
+前面几步已经取过 sequencing / color / typography / audio / copy，不用重取。
+下面这些是写代码时才用得上的，按这条片子实际需要取，**至少取 motion**：
 
 | 调用 | 什么时候取 |
 |---|---|
-| get_reference("sequencing") | 动手之前。整条片子的时间轴、节奏曲线、疏密 |
-| get_reference("motion") | 任何有运动的画面。缓动、夹紧、帧预算、运动模糊 |
-| get_reference("transitions") | 多镜头、需要转场时。硬切/叠化/擦除，叠化会吃时长 |
-| get_reference("typography") | 画面里有中文标题或字幕时。字号阶梯、行高、逐字动画 |
+| get_reference("motion") | 必取。缓动、夹紧、帧预算、运动模糊、预备-动作-跟随 |
+| get_reference("transitions") | 有 2 个以上镜头时。硬切/叠化/擦除，叠化会吃时长 |
 | get_reference("text-animation") | 文字要动的时候。进场、出场、强调、数字滚动 |
-| get_reference("color") | 想要片子感而不是 PPT 感时。调色板、明度、颗粒、暗角 |
 | get_reference("effects") | 需要模糊、发光、故障、拖影、扫描线时 |
-| get_reference("particles") | 用粒子做氛围或特效时。纯函数粒子、性能预算 |
+| get_reference("particles") | 用粒子做氛围或特效时 |
 | get_reference("camera") | 推拉摇移、视差、伪 3D 时 |
 | get_reference("data-viz") | 画面里有图表、数字对比时 |
-| get_reference("audio") | 写 score_js 之前。卡点、分线、留白、电平 |
 | get_reference("timbre") | 写 score_js 之前。28 条音色配方 + 编曲层次 |
-| get_reference("copy") | 写分镜文案之前。字幕硬规则与禁用词 |
 
-一次调用返回一份完整参考，取过就不用再取。
+一条 30 秒的片子，通常取 3–5 份就够。取太多反而抓不住重点。
+
+#### 交付前自检
+
+保存之前，用取过的那几份参考末尾的自检清单过一遍。至少这三条必须成立：
+
+1. renderAt(0)、renderAt(duration/2)、renderAt(duration-0.05) 三帧都不是黑屏、
+   不是静止、不是被截断的半截动作。
+2. 没有任何 Math.random() 或 Date.now()——它们会让导出和预览不一致。
+3. 每个 beats 里的 impact 在 score_js 里都有对应的声音事件。
 
 #### 卡点：先把 beats 导出来，再写配乐
 
