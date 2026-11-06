@@ -10,6 +10,7 @@
 [![license](https://img.shields.io/badge/license-MIT-3ea675?style=flat-square)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek_Harness-plugin-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/dsh)
 [![npm](https://img.shields.io/npm/v/dsh-creation-mode?style=flat-square&label=npm&color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
+[![downloads](https://img.shields.io/npm/dm/dsh-creation-mode?style=flat-square&label=downloads&color=cb3837)](https://www.npmjs.com/package/dsh-creation-mode)
 [![styles](https://img.shields.io/badge/styles-193-e0457b?style=flat-square)](docs/styles.md)
 [![deps](https://img.shields.io/badge/deps-0-2f9e6e?style=flat-square)](docs/internals.md#限制)
 
